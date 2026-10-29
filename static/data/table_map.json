@@ -1,0 +1,304 @@
+{
+  "updated_at": "2026-10-27",
+  "source": "《------运营指标-索引目录------.xlsx》模块/源表 + 《运营工作台-高斯底表.xlsx》落地表",
+  "note": "源表为上游库表（sdisd/dwritr/dmitrr 等），不在业务库 netcare，不能直接查；'源表直查'会自动改查对应落地表（第一张）。落地表均经业务库实测存在。",
+  "modules": [
+    {
+      "name": "网上问题",
+      "remark": "",
+      "source_tables": [
+        "dwritr.dwr_itr_sr_2bg_d",
+        "dwritr.dwr_itr_inc_notify_2bg_f",
+        "dwritr.dwr_itr_survey_2bg_f"
+      ],
+      "landing_tables": [
+        "nc_op_sa_sr_problem_detail_all_bg_dwd",
+        "nc_op_sa_sr_problem_detail_all_bg_ofr_dwd",
+        "nc_op_sa_sr_problem_realtime_stat_dws"
+      ]
+    },
+    {
+      "name": "管理升级",
+      "remark": "",
+      "source_tables": [
+        "dwritr.dwr_itr_sr_2bg_d",
+        "dwritr.dwr_itr_escalation_2bg_f",
+        "sdisd.mgt_order_t_9660",
+        "sdisd.cs_incidents_t_5600",
+        "sdisd.fnd_incident_statuses_t_5600",
+        "sdisd.fnd_incident_types_t_5600",
+        "sdisd.fnd_resolution_t_5600",
+        "sdiebg.ogg_cs_incidents_t",
+        "sdiebg.ogg_fnd_incident_statuses_t",
+        "sdiebg.ogg_fnd_incident_types_t",
+        "sdiebg.ogg_fnd_resolution_t"
+      ],
+      "landing_tables": [
+        "op_ioc_escalation_d_dwd",
+        "op_ioc_escalation_d_dws",
+        "op_ioc_sa_escalation_dtl_dwd",
+        "op_api_sa_eva_escalation_dtl_m_dwd"
+      ]
+    },
+    {
+      "name": "事故",
+      "remark": "",
+      "source_tables": [
+        "dmitrr.rpt_itr_sr_2bg_d",
+        "dmitrr.rpt_itr_inc_notify_2bg_f",
+        "sdisd.ogg_cnbg_accident_notify_t_2610",
+        "sdisd.ogg_ans_notify_info_t_2610",
+        "sdisd.ogg_ans_notify_relation_t_2610",
+        "sdisd.ogg_ebg_accident_notify_t_2610"
+      ],
+      "landing_tables": [
+        "clb_major_incidents_sr_dwd",
+        "op_ioc_accident_event_drill_dwd",
+        "op_incident_s_ga"
+      ]
+    },
+    {
+      "name": "紧急恢复",
+      "remark": "数据来源于网上问题，雷同",
+      "source_tables": [
+        "dwritr.dwr_itr_sr_2bg_d",
+        "dwritr.dwr_itr_inc_notify_2bg_f",
+        "dwritr.dwr_itr_survey_2bg_f"
+      ],
+      "landing_tables": [
+        "nc_op_sr_emergency_recovery_d_dwd"
+      ]
+    },
+    {
+      "name": "网络变更",
+      "remark": "",
+      "source_tables": [
+        "task_report_work_all_ga",
+        "dmitrr.rpt_itr_sr_rfc_2bg_d",
+        "dmitrr.rpt_itr_task_report_rfc_2bg_f",
+        "dmitrr.rpt_itr_ows_back_main_task_2bg_f"
+      ],
+      "landing_tables": [
+        "task_report_work_all_ga",
+        "op_ioc_rfc_task_report_dtl_m_dwd",
+        "op_ioc_rfc_task_report_by_change_h_dws_0",
+        "op_ioc_rfc_task_report_by_change_h_dws_1",
+        "op_ioc_rfc_task_report_h_dws_0",
+        "op_ioc_rfc_task_report_h_dws_1",
+        "op_ioc_rfc_task_report_dtl_derive_dwd",
+        "mec_maintenance_rfc_dwd",
+        "mec_maintenance_rfc_ebg_dwd",
+        "mec_maintenance_sr_dwd"
+      ]
+    },
+    {
+      "name": "告警",
+      "remark": "",
+      "source_tables": [
+        "operationcenter_bubble_info"
+      ],
+      "landing_tables": [
+        "nc_op_bubble_sr_problem_dwd",
+        "op_ioc_alarm_d_dwd",
+        "op_ioc_alarm_d_dws_0",
+        "op_ioc_alarm_d_dws_1",
+        "op_ioc_alarm_m_dwd"
+      ]
+    },
+    {
+      "name": "整改",
+      "remark": "",
+      "source_tables": [
+        "dwr_sd_task_check_rectify_f",
+        "sdisd.ogg_erisk_base_info_6450",
+        "sdisd.ogg_erisk_base_info_fr_6450",
+        "sdisd.ogg_erisk_recordal_record_6450",
+        "sdisd.ogg_erisk_recordal_record_fr_6450",
+        "hicare_asp.vw_rectification_china"
+      ],
+      "landing_tables": [
+        "op_ioc_rectify_check_d_dwd",
+        "op_ioc_rectify_check_d_dws",
+        "op_ioc_rectify_notice_d_dwd",
+        "op_ioc_rectify_check_d_dwd_derive"
+      ]
+    },
+    {
+      "name": "EOS",
+      "remark": "",
+      "source_tables": [
+        "dwisd_vi.t_rt_dm_netcaree_nc_eos_ris_2dyyzcvd0lkyl_6450_vi"
+      ],
+      "landing_tables": [
+        "nc_eos_risk_management_dwd",
+        "nc_eos_risk_full_product_version_dws",
+        "nc_eos_risk_product_version_dws",
+        "nc_eos_risk_urgent_product_version_dws"
+      ]
+    },
+    {
+      "name": "数字证书",
+      "remark": "",
+      "source_tables": [
+        "dwisd_vi.t_intg_dm_z06y_6450_vi",
+        "dwisd_vi.t_rt_dm_netcarer_common_ris_ymwwtctdci40_6450_vi",
+        "sdisd.ogg_erisk_base_info_fr_6450",
+        "sdisd.ogg_erisk_info_operation_fr_6450"
+      ],
+      "landing_tables": [
+        "op_ioc_digital_cert_2026_d_dwd",
+        "op_ioc_digital_cert_2026_d_dws"
+      ]
+    },
+    {
+      "name": "风险管理",
+      "remark": "源表在 netcare 风险表",
+      "source_tables": [
+        "risk_task_new",
+        "hicare_asp.vw_china_network_risklist",
+        "nc_risk_ebg_task_info"
+      ],
+      "landing_tables": [
+        "op_ioc_risk_task_d_dwd",
+        "op_ioc_risk_task_stat_d_dws",
+        "op_ioc_risk_task_dtl_d_dwd",
+        "nc_eos_risk_management_dwd"
+      ]
+    },
+    {
+      "name": "固定期限License",
+      "remark": "",
+      "source_tables": [
+        "license_data_monitor",
+        "hicare_asp.vw_license_china",
+        "sdisd.ogg_erisk_base_info_6450",
+        "sdisd.ogg_erisk_base_info_fr_6450",
+        "sdisd.ogg_erisk_recordal_record_6450",
+        "sdisd.ogg_erisk_recordal_record_fr_6450"
+      ],
+      "landing_tables": [
+        "op_ioc_license_data_dtl_d_dwd_0",
+        "op_ioc_license_data_dtl_d_dwd_1",
+        "op_ioc_license_data_stat_d_dws_0",
+        "op_ioc_license_data_stat_d_dws_1"
+      ]
+    },
+    {
+      "name": "行解第三方",
+      "remark": "",
+      "source_tables": [
+        "nc_risk_ebg_task_info"
+      ],
+      "landing_tables": [
+        "nc_op_erisk_ebg_third_party_dwd_0",
+        "nc_op_erisk_ebg_third_party_dwd_1",
+        "knet_third_party_product_m_dwd"
+      ]
+    },
+    {
+      "name": "备件",
+      "remark": "调用备件接口实现，不涉及数据落地",
+      "source_tables": [
+        "sp_situational_awareness"
+      ],
+      "landing_tables": []
+    },
+    {
+      "name": "维护队伍",
+      "remark": "数据源不在 Datacube，仅 IOC",
+      "source_tables": [
+        "ncuc_network_owner_info_extended_query_6450",
+        "ncuc_redline_post_match_info_6450"
+      ],
+      "landing_tables": []
+    },
+    {
+      "name": "运营商专项",
+      "remark": "仅 IOC/datafab，运营工作台不涉及",
+      "source_tables": [
+        "t_intg_dm_z06y_6450_vi",
+        "t_rt_dm_netcarer_common_ris_ymwwtctdci40_6450_vi",
+        "t_intg_dm_z098_6450",
+        "t_intg_dm_0ddj_fr_6450",
+        "t_intg_dm_082z_6450_vi",
+        "t_intg_dm_081p_6450",
+        "dwr_sd_task_check_rectify_f"
+      ],
+      "landing_tables": []
+    },
+    {
+      "name": "平安氛围",
+      "remark": "离线数据，在 GDE 表，仅 IOC",
+      "source_tables": [],
+      "landing_tables": []
+    },
+    {
+      "name": "企业销售",
+      "remark": "从 eCrop 接口获取，不涉及数据落地",
+      "source_tables": [],
+      "landing_tables": []
+    },
+    {
+      "name": "组网/容量",
+      "remark": "netcare 侧已下线",
+      "source_tables": [],
+      "landing_tables": []
+    },
+    {
+      "name": "巡检",
+      "remark": "",
+      "source_tables": [
+        "eqpmth_checkmodel",
+        "op_ex_value_network_plan",
+        "risk_task_new",
+        "nc_hc_ebg_order_info",
+        "nc_hc_ebg_risk_check_item",
+        "cs_nc_comm_knet_network",
+        "cs_nc_comm_knet_subnetwork",
+        "nc_risk_ebg_task_info",
+        "knet_network_plan",
+        "knet_customer_network_relation"
+      ],
+      "landing_tables": [
+        "op_ioc_health_check_dwd",
+        "op_ioc_health_check_dws",
+        "op_ioc_health_check_network_dwd",
+        "op_ioc_health_check_dropddown_dws",
+        "mec_maintenance_health_check_dwd"
+      ]
+    },
+    {
+      "name": "共性问题",
+      "remark": "核心机房锂电",
+      "source_tables": [],
+      "landing_tables": []
+    },
+    {
+      "name": "作战地图",
+      "remark": "",
+      "source_tables": [],
+      "landing_tables": []
+    },
+    {
+      "name": "预案演练",
+      "remark": "",
+      "source_tables": [],
+      "landing_tables": [
+        "op_ioc_rpt_plan_topo_dwd"
+      ]
+    },
+    {
+      "name": "公共数据",
+      "remark": "高斯底表《公共数据》sheet 的公共维表/通用表，无上游源表（自产自销）",
+      "source_tables": [],
+      "landing_tables": [
+        "common_data_rep",
+        "common_data_customer_rel_country_relation",
+        "common_data_customer_dlvy_org",
+        "common_data_product",
+        "cs_nc_comm_customer_d_list",
+        "cs_nc_network_all_dwd"
+      ]
+    }
+  ]
+}

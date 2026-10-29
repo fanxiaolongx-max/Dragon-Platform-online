@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>埃及交付与服务护网行动及网络安全风险管控月报</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#eef2f7;color:#203344;font:13px/1.65 "Microsoft YaHei",sans-serif}
+.report{background:#fff;width:1280px;max-width:calc(100% - 32px);padding:22px 30px;margin:16px auto;box-shadow:0 3px 18px rgba(18,58,96,.09);border:5px double #52718f}
+.masthead{border-top:4px solid #173c60;border-bottom:1px solid #c2d1df;padding:16px 0;display:flex;flex-direction:column;align-items:center;gap:10px}
+.logo{width:180px;height:125px;object-fit:contain}
+h1{color:#153b60;font-size:22px;text-align:center;line-height:1.5;margin:0;width:100%;font-weight:700}
+section{margin:14px 0;border:1px solid #9eb3c7;scroll-margin-top:70px}
+.sectionhead{background:#173c60;color:#fff;display:flex;gap:10px;align-items:center;padding:7px 12px}
+.num{font-size:16px;font-weight:700;color:#e0eaf4;min-width:20px}
+h2{font-size:16px;flex:1;margin:0;font-weight:700}
+.body{padding:12px 14px;overflow:auto;white-space:pre-wrap;color:#203044}
+.body p{margin:6px 0}
+.body strong{color:#173c60}
+.body ol{padding-left:22px;margin:6px 0}
+.body li{margin:5px 0}
+.body table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}
+.body th,.body td{border:1px solid #a7b9cb;padding:7px 9px}
+.body th{background:#e6edf5;color:#233f5c;font-weight:700}
+/* 快捷跳转：参照 Dragon-Platform 月报编辑器，flex 自适应布局
+   - nav-wrapper 满宽居中，max-width:100% 保证窄屏不溢出
+   - nav 用 flex+wrap，行数由内容自动决定，不写死列数
+   - nav-row 强制 100% 宽，让每行的 a 用 flex:1 0 0 均分
+   - a 用 min-width:max-content 兜底，长标题不会被挤到换行/截断
+   - 通过 CSS 变量 --nav-row-height / --nav-font-size 暴露可调维度
+*/
+.module-nav-wrapper{max-width:100%;margin:14px auto;position:sticky;top:0;background:#fff;padding:9px 0 11px;z-index:3;border-bottom:1px solid #aabccc}
+.module-nav{display:flex;flex-wrap:wrap;gap:7px;--nav-row-height:38px;--nav-font-size:12px}
+.module-nav-row{display:flex;width:100%;gap:7px}
+.module-nav a{flex:1 0 0;display:flex;gap:8px;align-items:center;justify-content:center;text-decoration:none;font-size:var(--nav-font-size,12px);font-weight:600;padding:8px 6px;background:#f0f4f8;border:1px solid #aabdd0;color:#263f59;border-radius:2px;min-height:var(--nav-row-height,38px);min-width:max-content}
+.module-nav a:hover{background:#e3edf7;border-color:#6b8cae}
+.module-nav a b{font-size:13px;font-weight:700;color:#173c60;min-width:20px;text-align:center}
+.report-info{display:table;width:100%;border-collapse:collapse;table-layout:fixed;border:1.5px solid #8fa4b9;margin:14px 0 12px}
+.report-info .label-col{width:88px}
+.report-info th,.report-info td{border:1px solid #a8b9ca;padding:8px 11px;text-align:left;font-size:12px;vertical-align:middle;overflow-wrap:anywhere;white-space:pre-wrap}
+.report-info th{background:#e6edf5;color:#233f5c;font-weight:700;text-align:center;white-space:nowrap}
+.report-info td{color:#203044}
+.report-info .target-row td{height:auto}
+.overall-panel{border:1px solid #c8d6e3;margin:14px 0 18px}
+.overall-panel .sectionhead{display:flex;justify-content:center}
+/* 变量 token */
+.var-token{display:inline-block;padding:1px 8px;margin:0 2px;border-radius:3px;background:#eaf2fb;border:1px dashed #5b8cbe;color:#1d4f86;font-weight:700;font-size:13px;line-height:1.7}
+/* 图表容器 */
+.chart-box{display:block;width:100%;height:300px;margin:10px auto;border:1px solid #c3d2e1;background:#f5f8fb;border-radius:3px}
+.chart-loading{display:flex;align-items:center;justify-content:center;color:#4a7bab;font-size:13px;height:100%}
+.report-footer{border-top:1px solid #9db2c7;color:#435b71;text-align:center;margin-top:20px;padding:12px 10px 4px;white-space:pre-wrap;font-size:12px;line-height:1.8}
+
+/* ===== 导出工具栏：固定在右上角，参照样例 Dragon-Platform 月报导出菜单 ===== */
+.export-toolbar{position:fixed;top:14px;right:14px;z-index:100;display:flex;gap:6px;align-items:center}
+.export-btn{appearance:none;border:1px solid #173c60;background:#173c60;color:#fff;font:600 12px/1 "Microsoft YaHei",sans-serif;padding:8px 14px;border-radius:3px;cursor:pointer;display:flex;align-items:center;gap:5px;box-shadow:0 2px 6px rgba(23,60,96,.25);transition:background .15s,border-color .15s}
+.export-btn:hover{background:#204d78;border-color:#204d78}
+.export-btn:disabled{opacity:.55;cursor:wait}
+.export-btn svg{width:14px;height:14px;fill:currentColor}
+@media print{.export-toolbar{display:none!important}}
+@media(max-width:600px){.export-toolbar{top:8px;right:8px}.export-btn{padding:7px 10px;font-size:11px}}
+@media(max-width:800px){.report{max-width:100%;margin:0;padding:16px 12px}.module-nav{--nav-font-size:11px;--nav-row-height:34px;gap:6px}.module-nav a{padding:6px 5px}h1{font-size:18px}}
+@media(max-width:480px){.module-nav{--nav-font-size:10px;--nav-row-height:32px}}
+</style>
+</head>
+<body>
+  <!-- 导出工具栏：固定在右上角 -->
+  <div class="export-toolbar" id="exportToolbar">
+    <button type="button" class="export-btn" id="btnExportHtml" title="导出单文件 HTML（内联样式，离线可打开）">
+      <svg viewBox="0 0 16 16"><path d="M3 1.5a1 1 0 0 1 1-1h5.3a1 1 0 0 1 .7.3l3.7 3.7a1 1 0 0 1 .3.7V14.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-13zM9.5 1v3.5H13"/></svg>HTML
+    </button>
+    <button type="button" class="export-btn" id="btnExportPdf" title="导出单页长图式 PDF">
+      <svg viewBox="0 0 16 16"><path d="M3 1.5a1 1 0 0 1 1-1h5.3a1 1 0 0 1 .7.3l3.7 3.7a1 1 0 0 1 .3.7V14.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-13zM9.5 1v3.5H13M5.5 9.5h5M5.5 11.5h5M5.5 7.5h2.5"/></svg>PDF
+    </button>
+  </div>
+<main class="report" id="report">
+  <!-- 报头 -->
+  <div class="masthead">
+    <img class="logo" alt="EGYPT CS" src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20180%20125%22%3E%3Crect%20width%3D%22180%22%20height%3D%22125%22%20fill%3D%22%23173c60%22%2F%3E%3Crect%20y%3D%2282%22%20width%3D%22180%22%20height%3D%2243%22%20fill%3D%22%23204d78%22%2F%3E%3Ctext%20x%3D%2290%22%20y%3D%2250%22%20text-anchor%3D%22middle%22%20font-family%3D%22Arial%22%20font-size%3D%2224%22%20font-weight%3D%22700%22%20fill%3D%22%23fff%22%3EEGYPT%20CS%3C%2Ftext%3E%3Ctext%20x%3D%2290%22%20y%3D%22106%22%20text-anchor%3D%22middle%22%20font-family%3D%22Arial%22%20font-size%3D%2210%22%20fill%3D%22%23dce7f2%22%3E%E4%BA%A4%E4%BB%98%E4%B8%8E%E6%9C%8D%E5%8A%A1%E6%8A%A4%E7%BD%91%E8%A1%8C%E5%8A%A8%3C%2Ftext%3E%3C%2Fsvg%3E">
+    <h1>埃及交付与服务护网行动及网络安全风险管控月报（2026年9月）</h1>
+  </div>
+
+  <!-- 模块导航：参照 Dragon-Platform 月报编辑器，wrapper + flex 自适应布局，
+       每行用 nav-row 容器强制 100% 宽，行内的 a 用 flex:1 0 0 均分。
+       窄屏自动换行、字号自适应，不写死列数。 -->
+  <div class="module-nav-wrapper" aria-label="模块导航">
+    <nav class="module-nav">
+      <div class="module-nav-row">
+        <a href="#s1"><b>1</b>网络变更与操作保障</a>
+        <a href="#s2"><b>2</b>SR、重大问题与事件恢复</a>
+        <a href="#s3"><b>3</b>风险治理与网络韧性</a>
+        <a href="#s4"><b>4</b>License合规与连续运行</a>
+      </div>
+      <div class="module-nav-row">
+        <a href="#s5"><b>5</b>EOS退网与收编</a>
+        <a href="#s6"><b>6</b>第三方软件专项清单</a>
+        <a href="#s7"><b>7</b>内控、PR自检与质量稽查</a>
+        <a href="#s8"><b>8</b>网络安全例会与决议跟踪</a>
+      </div>
+    </nav>
+  </div>
+
+  <!-- 报告头信息表 -->
+  <table class="report-info">
+    <colgroup><col class="label-col"><col><col class="label-col"><col><col class="label-col"><col></colgroup>
+    <tbody>
+      <tr><th>部门</th><td>埃及网络保障与运维服务部</td><th>报告时间</th><td>2026年09月</td><th>密级</th><td>内部公开</td></tr>
+      <tr><th>报告编号</th><td colspan="3">EGY-CS-202609-V1.0</td><th>审核人</th><td>于祥 00877023</td></tr>
+      <tr class="target-row"><th>报告目标</th><td colspan="5">
+        <ol>
+          <li><strong>强化问题与事件管理</strong>：规范 SR 处理、事件升级及紧急业务恢复流程，提升问题及时解决率和事故发生后 60 分钟内的业务恢复及时率，保障客户网络稳定运行。</li>
+          <li><strong>确保变更与操作可信</strong>：推动适用的变更操作 100% 纳入 IT 管道管理，落实 RFC/MOP 审批、高风险操作拦截、操作日志稽查及业务比对，确保操作合规、过程可追溯、结果可验证。</li>
+          <li><strong>推进主动风险治理</strong>：统筹 TOPN、网络整改、巡检、License、EOS及第三方软件风险闭环，完善应急演练、预案拓扑和内控稽查，防范已知风险引发现网重大业务中断与事故。</li>
+        </ol>
+      </td></tr>
+    </tbody>
+  </table>
+
+  <!-- 整体情况 -->
+  <div class="overall-panel">
+    <div class="sectionhead"><span class="num" style="display:none"></span><h2>整体情况</h2></div>
+    <div class="body">
+      <p>本月现网共发生 <strong>372个问题单</strong>，较去年同期减少 <strong>4个，同比下降1.06%</strong>，现网整体运行情况保持平稳。</p>
+      <ol>
+        <li><strong>变更操作管理：</strong> 本年度累计实施网络变更操作 <strong>523次</strong>，较去年同期减少 <strong>288次，同比下降35.12%</strong>。</li>
+        <li><strong>紧急变更管理：</strong> 本期共实施 <strong>2次紧急RFC变更</strong>，其中 <strong>Orange 1次、Etisalat 1次</strong>。</li>
+        <li><strong>风险清理：</strong> 本年度累计完成 <strong>268项风险清理</strong>。</li>
+        <li><strong>应急预案及拓扑治理：</strong> 本月累计完成 <strong>3项应急预案及网络拓扑相关问题闭环</strong>。</li>
+        <li><strong>高价值网络巡检：</strong> 高价值网络巡检完成率达到 <strong>100%</strong>。</li>
+        <li><strong>账号管理：</strong> 5月份共申请 <strong>34个账号</strong>，其中 <strong>10个为远程访问账号</strong>。</li>
+        <li><strong>License风险管理：</strong> 当前现网仍存在 <strong>3个过期License</strong> 及 <strong>1,471个临时License</strong>。</li>
+        <li><strong>客户例会机制：</strong> 四大客户项目均按月组织客户维护沟通会议。</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- 1 网络变更与操作保障 -->
+  <section id="s1">
+    <div class="sectionhead"><span class="num">1</span><h2>网络变更与操作保障</h2></div>
+    <div class="body">
+      <p><strong>📈 SR趋势（近12个月SR走势 / 按年度）：</strong></p>
+      <div class="chart-box" id="srTrendChart"><div class="chart-loading">图表加载中...</div></div>
+      <p><strong>✅ 风险完成率：</strong><span class="var-token" id="riskRate">--</span></p>
+      <p>1. network change (RFC WFM QR + high risk interception + service compare) 参考地区部-北部非洲网络变更运营月度简报</p>
+    </div>
+  </section>
+
+  <!-- 2 SR、重大问题与事件恢复 -->
+  <section id="s2">
+    <div class="sectionhead"><span class="num">2</span><h2>SR、重大问题与事件恢复</h2></div>
+    <div class="body">【草稿】2. sr (critical + incident + recovery + escalate) 参考摩代-摩洛哥交付与服务护网行动管理月报</div>
+  </section>
+
+  <!-- 3 风险治理与网络韧性 -->
+  <section id="s3">
+    <div class="sectionhead"><span class="num">3</span><h2>风险治理与网络韧性</h2></div>
+    <div class="body">【草稿】3. risk (topN + RC + drilling + HC + contingency/topo) 参考摩代-摩洛哥交付与服务护网行动管理月报</div>
+  </section>
+
+  <!-- 4 License合规与连续运行 -->
+  <section id="s4">
+    <div class="sectionhead"><span class="num">4</span><h2>License合规与连续运行</h2></div>
+    <div class="body">【草稿】4. license (tmp + grace + overdue + anyESN) 参考摩代-摩洛哥交付与服务网络安全风险管控月报</div>
+  </section>
+
+  <!-- 5 EOS退网与收编 -->
+  <section id="s5">
+    <div class="sectionhead"><span class="num">5</span><h2>EOS退网与收编</h2></div>
+    <div class="body">【草稿】5. EOS (urgent product + version + contingency + Urgent EOS Incorporation) 参考埃及代表处EOS退网收编简报</div>
+  </section>
+
+  <!-- 6 第三方软件专项清单 -->
+  <section id="s6">
+    <div class="sectionhead"><span class="num">6</span><h2>第三方软件专项清单</h2></div>
+    <div class="body">【草稿】6. 3rd software - 直接列清单提要求</div>
+  </section>
+
+  <!-- 7 内控、PR自检与质量稽查 -->
+  <section id="s7">
+    <div class="sectionhead"><span class="num">7</span><h2>内控、PR自检与质量稽查</h2></div>
+    <div class="body">【草稿】7. 内控&amp;稽查 internal contral（PR: RFC MOP + SR PR 操作不进管道 + risk close quality + RC close quality + account manager onsite/off）。基于地区部和代表处稽查结果，灵活展示，有的话就写，没有就不写。</div>
+  </section>
+
+  <!-- 8 网络安全例会与决议跟踪 -->
+  <section id="s8">
+    <div class="sectionhead"><span class="num">8</span><h2>网络安全例会与决议跟踪</h2></div>
+    <div class="body">【草稿】8. network safety meeting 参考 Egypt Rep Office Network Assurance and "Network Protection Action 2026" Monthly Report - September，结合 MOM - Egypt D&amp;S Monthly Network Safety &amp; Internal Control Meeting - September 2026</div>
+  </section>
+
+  <footer class="report-footer">如对本报告内容有疑问或需进一步沟通，请联系：范晓龙 WX1545337、于祥 00877023。<div>埃及网络保障与运维服务部<br>Egypt Network Assurance &amp; Maintenance Service Dept</div></footer>
+</main>
+
+<script src="vendor/echarts.min.js"></script>
+<script>
+/* ======================= 埃及交付与服务护网行动月报 - 动态取数 =======================
+   变量【风险完成率】与图表【SR趋势】的数据处理逻辑已写死在后端
+   （/api/v1/aiji/risk-completion-rate、/api/v1/aiji/sr-trend）。
+   本页为写死的功能页面：定义好点位后，运行时从 report 库实时取数渲染。
+==================================================================================== */
+(function () {
+  var API_BASE = ""; // 同源部署
+  var chart = null;
+
+  function load(url) {
+    return fetch(API_BASE + url).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function (j) {
+      if (j.code !== 0) throw new Error(j.message || "业务错误");
+      return j.data;
+    });
+  }
+
+  // 1) 变量【风险完成率】
+  function renderRiskRate() {
+    load("/api/v1/aiji/risk-completion-rate").then(function (d) {
+      var el = document.getElementById("riskRate");
+      el.textContent = (d.completion_rate != null ? d.completion_rate : 0) + "%";
+      el.title = "已闭环 " + d.closed + " / 总 " + d.total;
+    }).catch(function (e) {
+      document.getElementById("riskRate").textContent = "--";
+      document.getElementById("riskRate").title = "加载失败: " + e.message;
+    });
+  }
+
+  // 2) 图表【SR趋势】 - 年度柱状图
+  function renderSrTrend() {
+    load("/api/v1/aiji/sr-trend").then(function (d) {
+      var box = document.getElementById("srTrendChart");
+      box.innerHTML = "";
+      chart = echarts.init(box);
+      chart.setOption({
+        title: { text: "SR趋势（按年度）", left: "center", textStyle: { fontSize: 14, color: "#173c60" } },
+        tooltip: { trigger: "axis" },
+        grid: { left: 40, right: 20, top: 50, bottom: 36 },
+        xAxis: { type: "category", data: d.years, axisLabel: { fontSize: 11 } },
+        yAxis: { type: "value", minInterval: 1, axisLabel: { fontSize: 11 } },
+        series: [{
+          name: "风险/问题单数",
+          type: "bar",
+          data: d.counts,
+          itemStyle: { color: "#2a6fb0" },
+          label: { show: true, position: "top", fontSize: 11 }
+        }]
+      });
+    }).catch(function (e) {
+      var box = document.getElementById("srTrendChart");
+      box.innerHTML = '<div class="chart-loading">图表加载失败: ' + e.message + "</div>";
+    });
+  }
+
+  window.addEventListener("resize", function () {
+    if (chart) chart.resize();
+  });
+
+  renderRiskRate();
+  renderSrTrend();
+})();
+</script>
+
+<!-- ===== 导出能力：html2canvas + jsPDF（PDF 用），HTML 导出无依赖 ===== -->
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script>
+/* ======================= 导出模块：参照 Dragon-Platform 月报 exportDocument() =======================
+   核心思路：克隆 DOM → 清理编辑态（按钮/占位/loading）→ 内联 CSS → 生成单文件 HTML / PDF
+   - HTML 导出：克隆 + 清洗 + 抓取 <style> → 拼成单文件 → 下载 Blob
+   - PDF 导出：克隆后写进隐藏 iframe 渲染 → html2canvas 截图 → jsPDF 拼长图 PDF
+==================================================================================== */
+(function () {
+  var EXPORT_TITLE = "埃及交付与服务护网行动及网络安全风险管控月报";
+
+  function safeName(name) {
+    return String(name || "report").replace(/[\\/:*?"<>|]/g, "_");
+  }
+
+  function download(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(function () {
+      URL.revokeObjectURL(url); a.remove();
+    }, 0);
+  }
+
+  /* ---- 1. 公共前置：克隆 DOM + 清理编辑态（参照样例 exportDocument）---- */
+  function prepareExportClone() {
+    var report = document.getElementById("report");
+    var clone = report.cloneNode(true);
+
+    // 1) 移除导出按钮自身（不进导出物）
+    clone.querySelectorAll("#exportToolbar, .export-toolbar").forEach(function (el) { el.remove(); });
+
+    // 2) 移除编辑态占位/loading 文字
+    clone.querySelectorAll(".chart-loading").forEach(function (el) {
+      // 若图表已渲染（canvas 子节点），保留；否则留空
+      if (!el.querySelector("canvas")) el.textContent = "";
+    });
+
+    // 3) 清理 data-* 编辑属性、sticky 定位（导出物用静态布局）
+    clone.removeAttribute("id");
+    clone.style.maxWidth = "100%";
+    clone.style.margin = "0 auto";
+
+    // nav 去掉 sticky，避免导出时叠在顶部
+    clone.querySelectorAll(".module-nav-wrapper").forEach(function (el) {
+      el.style.position = "static";
+      el.style.padding = "9px 0 11px";
+    });
+
+    return clone;
+  }
+
+  /* ---- 2. 内联 CSS：抓取本页所有 <style>，拼成字符串 ---- */
+  function collectInlineCSS() {
+    var css = "";
+    document.querySelectorAll("style").forEach(function (style) {
+      css += style.textContent + "\n";
+    });
+    // 追加打印样式：让导出 HTML 打印时也干净
+    css += "\n@media print{@page{margin:10mm}body{background:#fff}.report{box-shadow:none;border:0}}";
+    return css;
+  }
+
+  /* ---- 3. 导出 HTML ---- */
+  function exportHTML() {
+    var clone = prepareExportClone();
+    var css = collectInlineCSS();
+    var html = "<!doctype html>\n<html lang=\"zh-CN\">\n<head>\n" +
+      "<meta charset=\"utf-8\">\n" +
+      "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n" +
+      "<title>" + EXPORT_TITLE + "</title>\n" +
+      "<style>" + css + "</style>\n" +
+      "</head>\n<body>\n" + clone.outerHTML + "\n</body>\n</html>";
+    download(new Blob([html], { type: "text/html;charset=utf-8" }), safeName(EXPORT_TITLE) + ".html");
+  }
+
+  /* ---- 4. 导出 PDF（html2canvas + jsPDF）---- */
+  function exportPDF() {
+    if (typeof window.html2canvas === "undefined" || typeof window.jspdf === "undefined") {
+      alert("PDF 导出依赖加载失败，请检查网络后重试。");
+      return;
+    }
+    var btn = document.getElementById("btnExportPdf");
+    var oldText = btn.textContent;
+    btn.disabled = true; btn.textContent = "生成中…";
+
+    var clone = prepareExportClone();
+    var css = collectInlineCSS();
+
+    // 写进隐藏 iframe 渲染（避免污染当前页面）
+    var frame = document.createElement("iframe");
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText = "position:fixed;left:-100000px;top:0;width:1280px;height:1000px;border:0;pointer-events:none";
+    document.body.appendChild(frame);
+    var doc = frame.contentDocument;
+    doc.open();
+    doc.write("<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><style>" + css + "</style></head><body>" + clone.outerHTML + "</body></html>");
+    doc.close();
+
+    // 等图片/字体加载
+    var ready = Promise.all(Array.prototype.slice.call(doc.images).map(function (img) {
+      return img.complete ? Promise.resolve() : new Promise(function (r) {
+        img.addEventListener("load", r, { once: true });
+        img.addEventListener("error", r, { once: true });
+      });
+    })).then(function () { return doc.fonts ? doc.fonts.ready : Promise.resolve(); });
+
+    ready.then(function () {
+      var report = doc.querySelector(".report") || doc.body.firstElementChild;
+      var width = Math.ceil(report.getBoundingClientRect().width);
+      var height = Math.ceil(report.getBoundingClientRect().height);
+
+      // 自适应缩放：避免超 html2canvas 16384px 上限
+      var scale = Math.min(2,
+        16384 / Math.max(width, height),
+        Math.sqrt(32000000 / (width * height)) || 0.5
+      );
+      scale = Math.max(0.5, scale);
+
+      return html2canvas(report, {
+        scale: scale,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        windowWidth: width,
+        windowHeight: height,
+        scrollX: 0,
+        scrollY: 0,
+        logging: false
+      });
+    }).then(function (canvas) {
+      // PDF 尺寸压缩：不超过 jsPDF 14400px 限制
+      var cw = canvas.width, ch = canvas.height;
+      var factor = Math.min(1, 14400 / Math.max(cw, ch));
+      var pdfW = cw * factor, pdfH = ch * factor;
+
+      var jsPDF = window.jspdf.jsPDF;
+      var pdf = new jsPDF({
+        orientation: pdfW > pdfH ? "landscape" : "portrait",
+        unit: "pt",
+        format: [pdfW, pdfH],
+        compress: true
+      });
+      var imgData = canvas.toDataURL("image/jpeg", 0.92);
+      pdf.addImage(imgData, "JPEG", 0, 0, pdfW, pdfH);
+      pdf.save(safeName(EXPORT_TITLE) + ".pdf");
+    }).catch(function (err) {
+      console.error("[exportPDF]", err);
+      alert("PDF 导出失败：" + (err && err.message ? err.message : err));
+    }).finally(function () {
+      frame.remove();
+      btn.disabled = false; btn.textContent = oldText;
+    });
+  }
+
+  document.getElementById("btnExportHtml").addEventListener("click", exportHTML);
+  document.getElementById("btnExportPdf").addEventListener("click", exportPDF);
+})();
+</script>
+</body>
+</html>

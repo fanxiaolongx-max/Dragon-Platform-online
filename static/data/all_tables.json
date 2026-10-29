@@ -1,0 +1,4001 @@
+{
+ "db": "netcare",
+ "total": 441,
+ "empty_count": 119,
+ "mod_order": [
+  "网上问题",
+  "管理升级",
+  "事故",
+  "紧急恢复",
+  "网络变更",
+  "告警",
+  "整改",
+  "EOS",
+  "数字证书",
+  "风险管理",
+  "固定期限License",
+  "行解第三方",
+  "备件",
+  "维护队伍",
+  "运营商专项",
+  "平安氛围",
+  "企业销售",
+  "组网/容量",
+  "巡检",
+  "共性问题",
+  "作战地图",
+  "预案演练",
+  "公共数据"
+ ],
+ "tables": [
+  {
+   "t": "nc_op_sa_sr_problem_detail_all_bg_dwd",
+   "cn": "",
+   "mod": "网上问题",
+   "cate": "服务请求(问题单)",
+   "grain": "DWD明细",
+   "rows": 6177942,
+   "empty": false
+  },
+  {
+   "t": "nc_op_sa_sr_problem_detail_all_bg_ofr_dwd",
+   "cn": "",
+   "mod": "网上问题",
+   "cate": "服务请求(问题单)",
+   "grain": "DWD明细",
+   "rows": 130935,
+   "empty": false
+  },
+  {
+   "t": "nc_op_sa_sr_problem_realtime_stat_dws",
+   "cn": "网上问题ALL BG实时指标统计表",
+   "mod": "网上问题",
+   "cate": "服务请求(问题单)",
+   "grain": "DWS汇总",
+   "rows": 21065,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_escalation_d_dws",
+   "cn": "管理升级详单",
+   "mod": "管理升级",
+   "cate": "IOC运营",
+   "grain": "日粒度汇总",
+   "rows": 18711,
+   "empty": false
+  },
+  {
+   "t": "op_api_sa_eva_escalation_dtl_m_dwd",
+   "cn": "10维产品质量管理升级数归档表",
+   "mod": "管理升级",
+   "cate": "其他",
+   "grain": "月粒度明细",
+   "rows": 10096,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_escalation_d_dwd",
+   "cn": "管理升级详单",
+   "mod": "管理升级",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 8371,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_accident_event_drill_dwd",
+   "cn": "",
+   "mod": "事故",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 16347,
+   "empty": false
+  },
+  {
+   "t": "nc_op_sr_emergency_recovery_d_dwd",
+   "cn": "",
+   "mod": "紧急恢复",
+   "cate": "服务请求(问题单)",
+   "grain": "日粒度明细",
+   "rows": 13554,
+   "empty": false
+  },
+  {
+   "t": "mec_maintenance_sr_dwd",
+   "cn": "",
+   "mod": "网络变更",
+   "cate": "维护/检修",
+   "grain": "DWD明细",
+   "rows": 4630263,
+   "empty": false
+  },
+  {
+   "t": "task_report_work_all_ga",
+   "cn": "",
+   "mod": "网络变更",
+   "cate": "任务/工单",
+   "grain": "全量GA",
+   "rows": 1146349,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rfc_task_report_by_change_h_dws_0",
+   "cn": "实施任务统计表",
+   "mod": "网络变更",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 283788,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rfc_task_report_by_change_h_dws_1",
+   "cn": "实施任务统计表",
+   "mod": "网络变更",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 258637,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rfc_task_report_h_dws_0",
+   "cn": "实施任务统计表",
+   "mod": "网络变更",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 243998,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rfc_task_report_h_dws_1",
+   "cn": "实施任务统计表",
+   "mod": "网络变更",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 211681,
+   "empty": false
+  },
+  {
+   "t": "mec_maintenance_rfc_dwd",
+   "cn": "",
+   "mod": "网络变更",
+   "cate": "维护/检修",
+   "grain": "DWD明细",
+   "rows": 203849,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rfc_task_report_dtl_derive_dwd",
+   "cn": "",
+   "mod": "网络变更",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 100212,
+   "empty": false
+  },
+  {
+   "t": "mec_maintenance_rfc_ebg_dwd",
+   "cn": "",
+   "mod": "网络变更",
+   "cate": "维护/检修",
+   "grain": "DWD明细",
+   "rows": 21928,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_alarm_d_dwd",
+   "cn": "",
+   "mod": "告警",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 128529,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_alarm_m_dwd",
+   "cn": "",
+   "mod": "告警",
+   "cate": "IOC运营",
+   "grain": "月粒度明细",
+   "rows": 14607,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_alarm_d_dws_1",
+   "cn": "",
+   "mod": "告警",
+   "cate": "IOC运营",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 7610,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_alarm_d_dws_0",
+   "cn": "",
+   "mod": "告警",
+   "cate": "IOC运营",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 7589,
+   "empty": false
+  },
+  {
+   "t": "nc_op_bubble_sr_problem_dwd",
+   "cn": "",
+   "mod": "告警",
+   "cate": "服务请求(问题单)",
+   "grain": "DWD明细",
+   "rows": 364,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rectify_check_d_dws",
+   "cn": "整改统计clickhouse表",
+   "mod": "整改",
+   "cate": "整改",
+   "grain": "日粒度汇总",
+   "rows": 1959188,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rectify_check_d_dwd_derive",
+   "cn": "整改明细派生表(多网络拆单网络)",
+   "mod": "整改",
+   "cate": "整改",
+   "grain": "日粒度明细",
+   "rows": 801665,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rectify_check_d_dwd",
+   "cn": "整改明细clickhouse表",
+   "mod": "整改",
+   "cate": "整改",
+   "grain": "日粒度明细",
+   "rows": 691001,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rectify_notice_d_dwd",
+   "cn": "整改通知详单表",
+   "mod": "整改",
+   "cate": "整改",
+   "grain": "日粒度明细",
+   "rows": 1267,
+   "empty": false
+  },
+  {
+   "t": "nc_eos_risk_product_version_dws",
+   "cn": "产品EOS&版本EOS统计表(Netcare来源)",
+   "mod": "EOS",
+   "cate": "风险",
+   "grain": "DWS汇总",
+   "rows": 114876,
+   "empty": false
+  },
+  {
+   "t": "nc_eos_risk_full_product_version_dws",
+   "cn": "全产品&全版本统计表(Netcare来源)",
+   "mod": "EOS",
+   "cate": "风险",
+   "grain": "DWS汇总",
+   "rows": 84960,
+   "empty": false
+  },
+  {
+   "t": "nc_eos_risk_management_dwd",
+   "cn": "全产品&全版本&重急&高风险EOS明细表(Netcare来源)",
+   "mod": "EOS",
+   "cate": "风险",
+   "grain": "DWD明细",
+   "rows": 84679,
+   "empty": false
+  },
+  {
+   "t": "nc_eos_risk_urgent_product_version_dws",
+   "cn": "重急EOS产品及高风险版本统计表",
+   "mod": "EOS",
+   "cate": "风险",
+   "grain": "DWS汇总",
+   "rows": 10942,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_dwd",
+   "cn": "数字证书明细表",
+   "mod": "数字证书",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 17485,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_dws",
+   "cn": "数字证书统计表",
+   "mod": "数字证书",
+   "cate": "IOC运营",
+   "grain": "日粒度汇总",
+   "rows": 2101,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_risk_task_dtl_d_dwd",
+   "cn": "风险明细表(clickhouse)",
+   "mod": "风险管理",
+   "cate": "风险",
+   "grain": "日粒度明细",
+   "rows": 403637,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_risk_task_stat_d_dws",
+   "cn": "",
+   "mod": "风险管理",
+   "cate": "风险",
+   "grain": "日粒度汇总",
+   "rows": 10982,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_risk_task_d_dwd",
+   "cn": "巡检风险明细表",
+   "mod": "风险管理",
+   "cate": "风险",
+   "grain": "日粒度明细",
+   "rows": 105,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_license_data_dtl_d_dwd_1",
+   "cn": "固定期限License明细表",
+   "mod": "固定期限License",
+   "cate": "License",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 1967877,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_license_data_dtl_d_dwd_0",
+   "cn": "固定期限License明细表",
+   "mod": "固定期限License",
+   "cate": "License",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 1875356,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_license_data_stat_d_dws_1",
+   "cn": "固定期限License统计表",
+   "mod": "固定期限License",
+   "cate": "License",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 30793,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_license_data_stat_d_dws_0",
+   "cn": "固定期限License统计表",
+   "mod": "固定期限License",
+   "cate": "License",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 30734,
+   "empty": false
+  },
+  {
+   "t": "knet_third_party_product_m_dwd",
+   "cn": "",
+   "mod": "行解第三方",
+   "cate": "其他",
+   "grain": "月粒度明细",
+   "rows": 5246,
+   "empty": false
+  },
+  {
+   "t": "nc_op_erisk_ebg_third_party_dwd_0",
+   "cn": "",
+   "mod": "行解第三方",
+   "cate": "风险",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 114,
+   "empty": false
+  },
+  {
+   "t": "nc_op_erisk_ebg_third_party_dwd_1",
+   "cn": "",
+   "mod": "行解第三方",
+   "cate": "风险",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 114,
+   "empty": false
+  },
+  {
+   "t": "mec_maintenance_health_check_dwd",
+   "cn": "",
+   "mod": "巡检",
+   "cate": "维护/检修",
+   "grain": "DWD明细",
+   "rows": 9341,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_health_check_dropddown_dws",
+   "cn": "巡检相关下拉选项表",
+   "mod": "巡检",
+   "cate": "IOC运营",
+   "grain": "DWS汇总",
+   "rows": 4870,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_health_check_network_dwd",
+   "cn": "",
+   "mod": "巡检",
+   "cate": "网络",
+   "grain": "DWD明细",
+   "rows": 4565,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_health_check_dwd",
+   "cn": "",
+   "mod": "巡检",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 1386,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_health_check_dws",
+   "cn": "巡检数据统计表",
+   "mod": "巡检",
+   "cate": "IOC运营",
+   "grain": "DWS汇总",
+   "rows": 981,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rpt_plan_topo_dwd",
+   "cn": "",
+   "mod": "预案演练",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 4617,
+   "empty": false
+  },
+  {
+   "t": "common_data_customer_dlvy_org",
+   "cn": "客户",
+   "mod": "公共数据",
+   "cate": "客户",
+   "grain": "—",
+   "rows": 695631,
+   "empty": false
+  },
+  {
+   "t": "common_data_product",
+   "cn": "产品",
+   "mod": "公共数据",
+   "cate": "产品",
+   "grain": "—",
+   "rows": 70274,
+   "empty": false
+  },
+  {
+   "t": "cs_nc_comm_customer_d_list",
+   "cn": "大T",
+   "mod": "公共数据",
+   "cate": "大T",
+   "grain": "—",
+   "rows": 37363,
+   "empty": false
+  },
+  {
+   "t": "cs_nc_network_all_dwd",
+   "cn": "全部网络信息包含运营商和政企",
+   "mod": "公共数据",
+   "cate": "网络",
+   "grain": "DWD明细",
+   "rows": 9731,
+   "empty": false
+  },
+  {
+   "t": "common_data_rep",
+   "cn": "地区部/代表处",
+   "mod": "公共数据",
+   "cate": "地区部/代表处",
+   "grain": "—",
+   "rows": 546,
+   "empty": false
+  },
+  {
+   "t": "common_data_customer_rel_country_relation",
+   "cn": "国家地区",
+   "mod": "公共数据",
+   "cate": "国家地区",
+   "grain": "—",
+   "rows": 297,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rectify_check_d_dws_snap",
+   "cn": "整改统计表",
+   "mod": "",
+   "cate": "整改",
+   "grain": "DWS快照",
+   "rows": 57851138,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rectify_check_d_dwd_snap",
+   "cn": "整改明细表",
+   "mod": "",
+   "cate": "整改",
+   "grain": "DWD快照",
+   "rows": 27598578,
+   "empty": false
+  },
+  {
+   "t": "ibms_report_dws_snap",
+   "cn": "全产品&全版本统计快照表(IBMS来源)",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWS快照",
+   "rows": 21768211,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_jtf_tasks_b_5600_dwd",
+   "cn": "SR宽表运营商ICARE+",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 13591726,
+   "empty": false
+  },
+  {
+   "t": "nc_eos_risk_product_version_dws_snap",
+   "cn": "产品EOS&版本EOS统计快照表(Netcare来源)",
+   "mod": "",
+   "cate": "风险",
+   "grain": "DWS快照",
+   "rows": 8859618,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_dwr_itr_srvreq_d_dwd",
+   "cn": "SR宽表运营商ICARE+",
+   "mod": "",
+   "cate": "其他",
+   "grain": "日粒度明细",
+   "rows": 8217699,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_t_intg_dm_099t_6450_vi_dwd",
+   "cn": "网络变更实施表视图",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 7639367,
+   "empty": false
+  },
+  {
+   "t": "nc_eos_risk_full_product_version_dws_snap",
+   "cn": "全产品&全版本统计快照表(Netcare来源)",
+   "mod": "",
+   "cate": "风险",
+   "grain": "DWS快照",
+   "rows": 7554757,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_dwr_itr_task_f_dwd",
+   "cn": "SR TASK宽表运营商ICARE+",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 7165239,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_inventory_reverse_space_details_ods_0",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 6261754,
+   "empty": false
+  },
+  {
+   "t": "nu_qu_nc_portray_sa_sr_problem_detail_all_bg_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "DWD明细",
+   "rows": 4929336,
+   "empty": false
+  },
+  {
+   "t": "timeliness_analysis_model_previous_sn_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 4647179,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_metrics_ar_sn_details_ods_3",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 4305102,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_metrics_ar_sn_details_ods_2",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 4260449,
+   "empty": false
+  },
+  {
+   "t": "mr_ne_reverse_direction_all_t_gauss_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 4199452,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_dwr_itr_sr_2bg_d_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "日粒度明细",
+   "rows": 4193093,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_metrics_ar_sn_details_ods_0",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 4113811,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_metrics_ar_sn_details_ods_1",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 3991456,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_space_analyze_details_snapshot",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 3566922,
+   "empty": false
+  },
+  {
+   "t": "mr_ne_sn_item_contract_f_tbl_insp_inventory_dwd_1",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 2975536,
+   "empty": false
+  },
+  {
+   "t": "mr_parent_customer_details_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 2923237,
+   "empty": false
+  },
+  {
+   "t": "nc_ioc_sa_sr_problem_stat_dws_0",
+   "cn": "IOC网上问题ALL BG统计表",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 2797897,
+   "empty": false
+  },
+  {
+   "t": "mr_ne_sn_item_contract_f_tbl_insp_inventory_dwd_0",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 2780702,
+   "empty": false
+  },
+  {
+   "t": "nc_ioc_sa_sr_problem_stat_dws_1",
+   "cn": "IOC网上问题ALL BG统计表",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 2757220,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_o3_sn_pool_t_details_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 2715891,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_dwr_sd_rfc_info_f_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 2645193,
+   "empty": false
+  },
+  {
+   "t": "timeliness_analysis_model_rr_detail_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 2623379,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_metrics_rr_sn_details_ods_1",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 2452695,
+   "empty": false
+  },
+  {
+   "t": "mec_maintenance_record_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "维护/检修",
+   "grain": "DWD明细",
+   "rows": 2371680,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_full_shipment_details_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 2364325,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_metrics_rr_sn_details_ods_2",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 2361303,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_metrics_rr_sn_details_ods_0",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 2341370,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_dwd_snap",
+   "cn": "数字证书2026快照clickhouse明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD快照",
+   "rows": 2245092,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_metrics_rr_sn_details_ods_3",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 2150107,
+   "empty": false
+  },
+  {
+   "t": "nc_op_sa_sr_problem_stat_no_net_dws",
+   "cn": "",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "DWS汇总",
+   "rows": 1938957,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_t_intg_dm_099t_6450_vi_ods",
+   "cn": "网络变更实施表视图",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 1628991,
+   "empty": false
+  },
+  {
+   "t": "mr_reverse_space_details_gauss_dwd_20741",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 1386218,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_dwr_itr_task_2bg_f_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 1365168,
+   "empty": false
+  },
+  {
+   "t": "mr_reverse_space_details_gauss_dwd_20740",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 1311287,
+   "empty": false
+  },
+  {
+   "t": "mr_reverse_space_details_gauss_dwd_20739",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 1274397,
+   "empty": false
+  },
+  {
+   "t": "nc_eos_risk_urgent_product_version_dws_snap",
+   "cn": "重急EOS产品及高风险版本统计表",
+   "mod": "",
+   "cate": "风险",
+   "grain": "DWS快照",
+   "rows": 1026291,
+   "empty": false
+  },
+  {
+   "t": "task_report_work_ga",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "全量GA",
+   "rows": 1010633,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_du_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "ODS源层",
+   "rows": 967016,
+   "empty": false
+  },
+  {
+   "t": "nc_eos_risk_management_dwd_snap",
+   "cn": "全产品&全版本&重急&高风险EOS明细表(Netcare来源)",
+   "mod": "",
+   "cate": "风险",
+   "grain": "DWD快照",
+   "rows": 938028,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_du_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 925331,
+   "empty": false
+  },
+  {
+   "t": "mr_account_info_gauss_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "账务",
+   "grain": "DWD明细",
+   "rows": 838179,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_sn_pool_country_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 821899,
+   "empty": false
+  },
+  {
+   "t": "cs_nc_comm_customer_na_level_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "大T",
+   "grain": "ODS源层",
+   "rows": 785574,
+   "empty": false
+  },
+  {
+   "t": "common_data_customer_contact_dwd",
+   "cn": "公共数据客户联系人表",
+   "mod": "",
+   "cate": "公共基础表（维表/关联关系）",
+   "grain": "DWD明细",
+   "rows": 775866,
+   "empty": false
+  },
+  {
+   "t": "cs_nc_comm_customer_d_list_dim",
+   "cn": "大T-客户映射表",
+   "mod": "",
+   "cate": "大T",
+   "grain": "—",
+   "rows": 742156,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_saca_level_dws",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS汇总",
+   "rows": 626834,
+   "empty": false
+  },
+  {
+   "t": "mec_maintenance_network_operation_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "维护/检修",
+   "grain": "DWD明细",
+   "rows": 584101,
+   "empty": false
+  },
+  {
+   "t": "vw_rectification_china_ods",
+   "cn": "整改增加中国区HiCare数据",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 544864,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_eos_space_details_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 462872,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_inventory_space_details_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 426565,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_saca_date_dws",
+   "cn": "正式得分日期表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS汇总",
+   "rows": 392680,
+   "empty": false
+  },
+  {
+   "t": "task_report_morning_evening_notification_dws",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS汇总",
+   "rows": 389068,
+   "empty": false
+  },
+  {
+   "t": "mec_maintenance_sr_ebg_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "维护/检修",
+   "grain": "DWD明细",
+   "rows": 382168,
+   "empty": false
+  },
+  {
+   "t": "itr_sr_2bg_d_ga",
+   "cn": "",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "全量GA",
+   "rows": 293675,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_saca_dropdown",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "—",
+   "rows": 288278,
+   "empty": false
+  },
+  {
+   "t": "nc_op_ogg_erisk_ebg_query_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "风险",
+   "grain": "ODS源层",
+   "rows": 264864,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_dwr_itr_task_f_ods",
+   "cn": "SR TASK宽表运营商ICARE+",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "ODS源层",
+   "rows": 239435,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_dws_snap",
+   "cn": "2026数字证书快照表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS快照",
+   "rows": 238208,
+   "empty": false
+  },
+  {
+   "t": "ibms_report_dwd",
+   "cn": "IBMS_REPORT_DWD/全产品&全版本明细表(IBMS来源)",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 228326,
+   "empty": false
+  },
+  {
+   "t": "ibms_report_annual_baseline_dwd",
+   "cn": "IBMS年度基线表",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 220657,
+   "empty": false
+  },
+  {
+   "t": "ibms_report_dws",
+   "cn": "全产品&全版本统计表(IBMS来源)",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWS汇总",
+   "rows": 216090,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_eos_month_dws",
+   "cn": "OP_IOC_EOS_D_DWS",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS汇总",
+   "rows": 192475,
+   "empty": false
+  },
+  {
+   "t": "ibms_report_dws_copy1",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 184957,
+   "empty": false
+  },
+  {
+   "t": "nc_op_vw_license_china_query_ods",
+   "cn": "HiCare的固定期限License临时表",
+   "mod": "",
+   "cate": "License",
+   "grain": "ODS源层",
+   "rows": 180752,
+   "empty": false
+  },
+  {
+   "t": "ibms_report_annual_baseline_dws",
+   "cn": "全产品&全版本统计表(IBMS来源)",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWS汇总",
+   "rows": 179506,
+   "empty": false
+  },
+  {
+   "t": "nc_op_check_rectify_cnbg_ods",
+   "cn": "例行整改数据",
+   "mod": "",
+   "cate": "整改",
+   "grain": "ODS源层",
+   "rows": 178237,
+   "empty": false
+  },
+  {
+   "t": "nt_network_product_version_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD明细",
+   "rows": 162366,
+   "empty": false
+  },
+  {
+   "t": "uc_highrisk_commands_incpt_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 161958,
+   "empty": false
+  },
+  {
+   "t": "nc_op_sa_sr_problem_ofr_detail_ods",
+   "cn": "问题单详表",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "ODS源层",
+   "rows": 147206,
+   "empty": false
+  },
+  {
+   "t": "nc_op_api_rfc_task_details_ebg_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "ODS源层",
+   "rows": 144550,
+   "empty": false
+  },
+  {
+   "t": "op_api_holiday_calendar",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 142057,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rfc_task_report_dtl_h_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "小时明细",
+   "rows": 131904,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_sn_pool_country_sn_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 128552,
+   "empty": false
+  },
+  {
+   "t": "nu_qu_nc_portray_snapshot_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 126980,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_special_assurance_2026_cnbg_ods",
+   "cn": "运营商专项保障维护任务明细ods表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "ODS源层",
+   "rows": 114832,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rectify_check_task_ga_ods",
+   "cn": "整改L2同步数据",
+   "mod": "",
+   "cate": "整改",
+   "grain": "ODS源层",
+   "rows": 108908,
+   "empty": false
+  },
+  {
+   "t": "mr_bids_inventory_space_eos_details_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 108494,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_eos_snap_dwd_02",
+   "cn": "OP_IOC_EOS_D_DWD",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 101517,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_eos_snap_dwd_03",
+   "cn": "OP_IOC_EOS_D_DWD",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 100055,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_eos_d_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 99590,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_dwr_itr_sr_2bg_d_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "ODS源层",
+   "rows": 99426,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_eos_snap_dwd_04",
+   "cn": "OP_IOC_EOS_D_DWD",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 99094,
+   "empty": false
+  },
+  {
+   "t": "nc_dwr_sd_cs_eos_risk_info_f_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "风险",
+   "grain": "ODS源层",
+   "rows": 96387,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_eos_d_dws",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度汇总",
+   "rows": 95194,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_saca_result_details_dwd",
+   "cn": "扣分业务详表DWD",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 80756,
+   "empty": false
+  },
+  {
+   "t": "nc_op_eos_risk_manager_query_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "风险",
+   "grain": "ODS源层",
+   "rows": 73986,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_t_intg_dm_082z_6450_vi_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 73197,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rectify_notice_d_dwd_snap",
+   "cn": "整改通知详单快照CH表",
+   "mod": "",
+   "cate": "整改",
+   "grain": "DWD快照",
+   "rows": 65459,
+   "empty": false
+  },
+  {
+   "t": "nc_op_sa_sr_problem_detail_all_bg_ods",
+   "cn": "问题单详表",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "ODS源层",
+   "rows": 64894,
+   "empty": false
+  },
+  {
+   "t": "nu_qu_nc_portray_bubble_d_dwd_0",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 60624,
+   "empty": false
+  },
+  {
+   "t": "nc_op_sr_problem_realtime_h_dwd",
+   "cn": "大屏问题单实时表",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "小时明细",
+   "rows": 59090,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_dwr_itr_srvreq_d_ods",
+   "cn": "SR宽表运营商ICARE+",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 57636,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rfc_task_report_statistics_dws",
+   "cn": "变更各维度统计表-网络保障业务IOC使用",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS汇总",
+   "rows": 57315,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_saca_result_dwd",
+   "cn": "增扣分详表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 54835,
+   "empty": false
+  },
+  {
+   "t": "nt_arc_network_product_version_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD明细",
+   "rows": 52006,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_backup_data_task_dwd",
+   "cn": "数据备份明细表",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 51488,
+   "empty": false
+  },
+  {
+   "t": "uc_group_dwd",
+   "cn": "用户中心群组表",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 50457,
+   "empty": false
+  },
+  {
+   "t": "mec_maintenance_network_operation_ebg_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "维护/检修",
+   "grain": "DWD明细",
+   "rows": 47588,
+   "empty": false
+  },
+  {
+   "t": "nc_op_sr_problem_realtime_dwd_ebg_ods",
+   "cn": "大屏问题单EBG实时临时表",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "ODS源层",
+   "rows": 39072,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_t_intg_dm_082z_6450_vi_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 36872,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_t_rt_dm_netcareb_task_repor_28fx2yvrejrs7_6450_vi_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 35544,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_saca_score_dws",
+   "cn": "得分统计表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS汇总",
+   "rows": 35517,
+   "empty": false
+  },
+  {
+   "t": "nt_archive_network_query_model_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD明细",
+   "rows": 34225,
+   "empty": false
+  },
+  {
+   "t": "nc_network_maintain_plan_action_ebg_ods",
+   "cn": "企业hicare网络维护计划操作ODS表(BIDS同步的)",
+   "mod": "",
+   "cate": "维护/检修",
+   "grain": "ODS源层",
+   "rows": 33789,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_dwr_sd_rfc_info_f_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 31953,
+   "empty": false
+  },
+  {
+   "t": "nt_network_query_model_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD明细",
+   "rows": 30440,
+   "empty": false
+  },
+  {
+   "t": "nc_op_sr_cnbg_bu_name_query_ods",
+   "cn": "实时问题运营商BU名称临时表",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "ODS源层",
+   "rows": 29331,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_dwr_itr_task_2bg_f_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "ODS源层",
+   "rows": 28700,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_lithium_batteries_check_dwd_snap",
+   "cn": "核心机房锂电机房巡检明细快照CH表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD快照",
+   "rows": 27206,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_special_assurance_history_d_dwd",
+   "cn": "运营商专项保障明细快照表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 26656,
+   "empty": false
+  },
+  {
+   "t": "nc_op_sr_problem_realtime_dwd_cnbg_ods",
+   "cn": "大屏问题单CNBG实时临时表",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "ODS源层",
+   "rows": 25521,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_digital_cert_history_dwd_3",
+   "cn": "数字证书明细历史快照表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 23491,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rfc_nt_load_control_log_dwd",
+   "cn": "疲劳驾驶明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 23097,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_digital_cert_d_dwd",
+   "cn": "数字证书明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 23004,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_dwd_itr_rfc_task_f_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 19693,
+   "empty": false
+  },
+  {
+   "t": "op_api_sa_eva_incident_dtl_m_dwd",
+   "cn": "10维产品质量事故详单",
+   "mod": "",
+   "cate": "事件/通知/调查",
+   "grain": "月粒度明细",
+   "rows": 19021,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_dwd_snap_3",
+   "cn": "数字证书2026快照明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 18120,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_digital_cert_d_dws",
+   "cn": "数字证书统计表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度汇总",
+   "rows": 18052,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_dwr_ne_network_tuning_6450_vi_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD明细",
+   "rows": 17976,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_digital_cert_history_d_dws",
+   "cn": "数字证书统计历史快照表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度汇总",
+   "rows": 17897,
+   "empty": false
+  },
+  {
+   "t": "task_report_work_ebg_ga",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "全量GA",
+   "rows": 17452,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_dwd_snap_4",
+   "cn": "数字证书2026快照明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 17208,
+   "empty": false
+  },
+  {
+   "t": "task_report_work_ebg_all_ga",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "全量GA",
+   "rows": 17167,
+   "empty": false
+  },
+  {
+   "t": "nu_qu_nc_portray_bubble_all_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 16956,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_emergency_recovery_dws_20741",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 16237,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_emergency_recovery_dws_20742",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 16237,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_emergency_recovery_dws_20739",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 16150,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_storage_rectify_history_d_dwd",
+   "cn": "存储整改快照明细表",
+   "mod": "",
+   "cate": "整改",
+   "grain": "日粒度明细",
+   "rows": 16138,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_emergency_recovery_dws_20738",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 16034,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_emergency_recovery_dws_20740",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 16005,
+   "empty": false
+  },
+  {
+   "t": "nl_query_task_ga",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "全量GA",
+   "rows": 15822,
+   "empty": false
+  },
+  {
+   "t": "nl_query_task_all_ga",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "全量GA",
+   "rows": 15575,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_accident_event_drill_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "ODS源层",
+   "rows": 13995,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_license_data_stat_d_dws_derive",
+   "cn": "固定期限License统计派生表(多网络拆单网络)",
+   "mod": "",
+   "cate": "License",
+   "grain": "日粒度汇总",
+   "rows": 13241,
+   "empty": false
+  },
+  {
+   "t": "nt_network_nt_task_permission_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 12918,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_digital_cert_d_cnbg_ods",
+   "cn": "CNBG数字证书明细贴源层",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "ODS源层",
+   "rows": 12876,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_t_intg_dm_081r_6450_vi_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 12689,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rfc_task_report_h_dropdown_dwd",
+   "cn": "网络变更筛选框中间表",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 12413,
+   "empty": false
+  },
+  {
+   "t": "ne_network_product_version_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD明细",
+   "rows": 12115,
+   "empty": false
+  },
+  {
+   "t": "uc_highrisk_commands_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 11922,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_saca_card_new_dws",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS汇总",
+   "rows": 11825,
+   "empty": false
+  },
+  {
+   "t": "mec_maintenance_network_risk_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "风险",
+   "grain": "DWD明细",
+   "rows": 11793,
+   "empty": false
+  },
+  {
+   "t": "vw_china_network_risklist_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "ODS源层",
+   "rows": 11557,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_digital_cert_d_ebg_ods",
+   "cn": "EBG数字证书明细贴源层",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "ODS源层",
+   "rows": 11026,
+   "empty": false
+  },
+  {
+   "t": "nc_op_erisk_ebg_third_party_m_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "风险",
+   "grain": "月粒度明细",
+   "rows": 10123,
+   "empty": false
+  },
+  {
+   "t": "op_rfc_dtl_ods",
+   "cn": "变更详单临时表",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 9017,
+   "empty": false
+  },
+  {
+   "t": "n_task_work_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 8579,
+   "empty": false
+  },
+  {
+   "t": "customer_network_rel_dim",
+   "cn": "客户网络关系维表",
+   "mod": "",
+   "cate": "网络",
+   "grain": "—",
+   "rows": 8540,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_dwd_snap_2",
+   "cn": "数字证书2026快照明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 8013,
+   "empty": false
+  },
+  {
+   "t": "network_redline_owner_ebg_snapshot_d_dwd_1",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 7862,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_sa_escalation_dtl_ods",
+   "cn": "管理升级详单临时表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "ODS源层",
+   "rows": 7840,
+   "empty": false
+  },
+  {
+   "t": "network_redline_owner_ebg_snapshot_d_dwd_0",
+   "cn": "政企红线人员快照模型-东莞",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 7646,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_incident_h_dwd_temp",
+   "cn": "事故判断根因进展表",
+   "mod": "",
+   "cate": "事件/通知/调查",
+   "grain": "小时明细",
+   "rows": 7369,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_common_risk_associate_task_dwd",
+   "cn": "公共预警任务明细表",
+   "mod": "",
+   "cate": "风险",
+   "grain": "DWD明细",
+   "rows": 7177,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_t_rt_dm_netcareb_task_repor_28fx2yvrejrs7_6450_vi_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "ODS源层",
+   "rows": 7125,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_lithium_batteries_special_dwd_snap",
+   "cn": "核心机房锂电专项保障维护任务明细快照CH表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD快照",
+   "rows": 7075,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_pc_task_info_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 7006,
+   "empty": false
+  },
+  {
+   "t": "nu_qu_nc_portray_snapshot_monthly_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 6608,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_incident_h_dwd",
+   "cn": "BIDS实时同步CNBG数据",
+   "mod": "",
+   "cate": "事件/通知/调查",
+   "grain": "小时明细",
+   "rows": 6366,
+   "empty": false
+  },
+  {
+   "t": "op_bids_incident_ebg_details_ods",
+   "cn": "BIDS实时同步EBG数据",
+   "mod": "",
+   "cate": "事件/通知/调查",
+   "grain": "ODS源层",
+   "rows": 6343,
+   "empty": false
+  },
+  {
+   "t": "ne_network_query_model_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD明细",
+   "rows": 6117,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_dwr_itr_rfc_f_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 5869,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_incident_dtl_dwd",
+   "cn": "事故详单表",
+   "mod": "",
+   "cate": "事件/通知/调查",
+   "grain": "DWD明细",
+   "rows": 5803,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_highrisk_commands_d_dwd",
+   "cn": "高危命令拦截明细表(clickhouse)",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 5675,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_plan_topo_drill_mid_dwd",
+   "cn": "预案拓扑演练中间明细表(用于存储最早关闭时间数据)",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 5447,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_incident_dtl_ods",
+   "cn": "事故详单临时表",
+   "mod": "",
+   "cate": "事件/通知/调查",
+   "grain": "ODS源层",
+   "rows": 5253,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_dwr_ne_network_tuning_6450_vi_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "ODS源层",
+   "rows": 4560,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_risk_task_history_d_dwd",
+   "cn": "巡检风险快照表",
+   "mod": "",
+   "cate": "风险",
+   "grain": "日粒度明细",
+   "rows": 4454,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_eos_v2_d_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 4379,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rfc_task_report_saca_derive_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 4351,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_risk_check_item_dwd",
+   "cn": "巡检风险项明细表",
+   "mod": "",
+   "cate": "风险",
+   "grain": "DWD明细",
+   "rows": 3608,
+   "empty": false
+  },
+  {
+   "t": "nc_op_comm_knet_network_dwd",
+   "cn": "网络DWD表",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD明细",
+   "rows": 3245,
+   "empty": false
+  },
+  {
+   "t": "nc_op_check_rectify_ebg_ods",
+   "cn": "例行整改数据",
+   "mod": "",
+   "cate": "整改",
+   "grain": "ODS源层",
+   "rows": 3196,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_account_applier_leave_log_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "账务",
+   "grain": "DWD明细",
+   "rows": 3039,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_lithium_battery_history_d_dwd",
+   "cn": "巡检机房锂电明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 2898,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_network_plan_topo_drill_dwd",
+   "cn": "网络预案拓扑演练明细表",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD明细",
+   "rows": 2688,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_t_intg_dm_081r_6450_vi_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 2664,
+   "empty": false
+  },
+  {
+   "t": "network_redline_owner_times_ebg_d_dwd_0",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 2592,
+   "empty": false
+  },
+  {
+   "t": "network_redline_owner_times_ebg_d_dwd_1",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 2592,
+   "empty": false
+  },
+  {
+   "t": "network_redline_position_cnbg_snapshot_d_dwd_0",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 2520,
+   "empty": false
+  },
+  {
+   "t": "network_redline_position_cnbg_snapshot_d_dwd_1",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 2520,
+   "empty": false
+  },
+  {
+   "t": "nc_spsa_giag_dws",
+   "cn": "账实一致统计DWS表",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWS汇总",
+   "rows": 2388,
+   "empty": false
+  },
+  {
+   "t": "nu_qu_nc_portray_d_dwd_0",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 2343,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rectify_check_task_ebg_ods",
+   "cn": "整改海外政企同步数据",
+   "mod": "",
+   "cate": "整改",
+   "grain": "ODS源层",
+   "rows": 2311,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_lithium_batteries_risk_dwd_snap",
+   "cn": "核心机房锂电巡检风险明细快照CH表",
+   "mod": "",
+   "cate": "风险",
+   "grain": "DWD快照",
+   "rows": 2290,
+   "empty": false
+  },
+  {
+   "t": "ne_network_nt_task_permission_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 2134,
+   "empty": false
+  },
+  {
+   "t": "eos_task_management_united_ibms_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "ODS源层",
+   "rows": 2103,
+   "empty": false
+  },
+  {
+   "t": "nc_spsa_stocktaking_timeliness_dwd",
+   "cn": "盘点及时明细",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 1993,
+   "empty": false
+  },
+  {
+   "t": "network_redline_owner_cnbg_snapshot_d_dwd_0",
+   "cn": "运营商人员快照模型-汇总表",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 1829,
+   "empty": false
+  },
+  {
+   "t": "network_redline_owner_cnbg_snapshot_d_dwd_1",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 1829,
+   "empty": false
+  },
+  {
+   "t": "nc_op_prv_rectification_release_info_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 1690,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_du_dws",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS汇总",
+   "rows": 1682,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_redline_owner_dwd",
+   "cn": "红线人员表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 1517,
+   "empty": false
+  },
+  {
+   "t": "nc_op_ioc_escalation_dtl_ebg_bids_ods",
+   "cn": "管理升级详单",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "ODS源层",
+   "rows": 1498,
+   "empty": false
+  },
+  {
+   "t": "n_task_work_ebg_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 1476,
+   "empty": false
+  },
+  {
+   "t": "network_redline_owner_ebg_d_dwd_1",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 1291,
+   "empty": false
+  },
+  {
+   "t": "network_redline_owner_ebg_d_dwd_0",
+   "cn": "企业红线人员",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 1251,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_nekey_du_dws",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS汇总",
+   "rows": 1070,
+   "empty": false
+  },
+  {
+   "t": "saca_owner",
+   "cn": "saca责任人明细表",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 1043,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_special_assurance_risk_cnbg_ods",
+   "cn": "CPT-NR关系ODS表",
+   "mod": "",
+   "cate": "风险",
+   "grain": "ODS源层",
+   "rows": 1038,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rpt_plan_topo_by_network_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD明细",
+   "rows": 784,
+   "empty": false
+  },
+  {
+   "t": "saca_contingency_plan_drill_plan_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 784,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_itr_spp_safety_stock_satisfied_dws",
+   "cn": "库存满足率统计表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS汇总",
+   "rows": 783,
+   "empty": false
+  },
+  {
+   "t": "nc_spsa_daily_reconciliation_dws",
+   "cn": "日清日结统计DWS表",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWS汇总",
+   "rows": 758,
+   "empty": false
+  },
+  {
+   "t": "op_api_product_return_details_m_dwd",
+   "cn": "10维软/硬件质量原因变更失败详单",
+   "mod": "",
+   "cate": "其他",
+   "grain": "月粒度明细",
+   "rows": 732,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_special_assurance_cnbg_ods",
+   "cn": "运营商专项保障明细ods表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "ODS源层",
+   "rows": 648,
+   "empty": false
+  },
+  {
+   "t": "task_report_morning_evening_notification_ebg_dws",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS汇总",
+   "rows": 641,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_special_assurance_d_dwd",
+   "cn": "运营商专项保障明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 634,
+   "empty": false
+  },
+  {
+   "t": "it_inspect_task_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 629,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_redline_post_match_dws_snap",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS快照",
+   "rows": 534,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_risk_task_special_assurance_dtl_d_dwd",
+   "cn": "风险详单子集表(风险专项保障关系明细表)",
+   "mod": "",
+   "cate": "风险",
+   "grain": "日粒度明细",
+   "rows": 480,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_cnbg_ods",
+   "cn": "CNBG数字证书明细贴源层",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "ODS源层",
+   "rows": 426,
+   "empty": false
+  },
+  {
+   "t": "network_redline_owner_cnbg_d_dwd_0",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 397,
+   "empty": false
+  },
+  {
+   "t": "network_redline_owner_cnbg_d_dwd_1",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 397,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_storage_rectify_cnbg_ods",
+   "cn": "存储整改运营商ods数据",
+   "mod": "",
+   "cate": "整改",
+   "grain": "ODS源层",
+   "rows": 390,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_storage_rectify_d_dwd",
+   "cn": "存储整改明细表",
+   "mod": "",
+   "cate": "整改",
+   "grain": "日粒度明细",
+   "rows": 390,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_storage_rectify_d_dws",
+   "cn": "存储整改统计表",
+   "mod": "",
+   "cate": "整改",
+   "grain": "日粒度汇总",
+   "rows": 390,
+   "empty": false
+  },
+  {
+   "t": "op_bids_incident_cnbg_realtime_some_details_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "事件/通知/调查",
+   "grain": "ODS源层",
+   "rows": 377,
+   "empty": false
+  },
+  {
+   "t": "saca_index",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 366,
+   "empty": false
+  },
+  {
+   "t": "uc_highrisk_commands_threetimes_day_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 366,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_special_assurance_risk_dws",
+   "cn": "运营商专项保障风险统计表",
+   "mod": "",
+   "cate": "风险",
+   "grain": "DWS汇总",
+   "rows": 355,
+   "empty": false
+  },
+  {
+   "t": "op_bids_incident_cnbg_details_ods",
+   "cn": "BIDS实时同步CNBG数据",
+   "mod": "",
+   "cate": "事件/通知/调查",
+   "grain": "ODS源层",
+   "rows": 341,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_lithium_batteries_check_dwd",
+   "cn": "核心机房锂电机房巡检明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 285,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_highrisk_commands_d_dws",
+   "cn": "高危命令拦截统计表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度汇总",
+   "rows": 279,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_saca_card_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 257,
+   "empty": false
+  },
+  {
+   "t": "rfc_highrisk_commands_record_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 229,
+   "empty": false
+  },
+  {
+   "t": "uc_major_incidents_sr_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "事件/通知/调查",
+   "grain": "DWD明细",
+   "rows": 218,
+   "empty": false
+  },
+  {
+   "t": "mr_table_division_relationship",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 172,
+   "empty": false
+  },
+  {
+   "t": "itr_spp_safety_stock_satisfied_ods",
+   "cn": "库存满足率ODS表",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 168,
+   "empty": false
+  },
+  {
+   "t": "nc_spsa_giag_dwd",
+   "cn": "账实一致明细DWD表",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 164,
+   "empty": false
+  },
+  {
+   "t": "nc_op_escalation_realtime_cnbg_ods",
+   "cn": "管理升级实时详单",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 161,
+   "empty": false
+  },
+  {
+   "t": "clb_major_incidents_sr_dwd_2",
+   "cn": "",
+   "mod": "",
+   "cate": "重大事件",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 121,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_redline_post_match_dws",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS汇总",
+   "rows": 110,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_redline_position_dwd",
+   "cn": "红线岗位表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 105,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_risk_task_cnbg_ods",
+   "cn": "巡检风险运营商ODS表",
+   "mod": "",
+   "cate": "风险",
+   "grain": "ODS源层",
+   "rows": 105,
+   "empty": false
+  },
+  {
+   "t": "nc_op_risk_elimination_enterprise_overview_south_africa",
+   "cn": "南非看板-企业专项",
+   "mod": "",
+   "cate": "风险",
+   "grain": "—",
+   "rows": 101,
+   "empty": false
+  },
+  {
+   "t": "nc_mec_dwr_itr_rfc_f_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 99,
+   "empty": false
+  },
+  {
+   "t": "op_bids_incident_ebg_realtime_some_details_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "事件/通知/调查",
+   "grain": "ODS源层",
+   "rows": 83,
+   "empty": false
+  },
+  {
+   "t": "network_redline_position_cnbg_d_dwd_0",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 77,
+   "empty": false
+  },
+  {
+   "t": "network_redline_position_cnbg_d_dwd_1",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 77,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_lithium_batteries_special_dwd",
+   "cn": "核心机房锂电专项保障维护任务明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 71,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_lithium_battery_d_dwd",
+   "cn": "巡检机房锂电明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 69,
+   "empty": false
+  },
+  {
+   "t": "t_df_latest_table_partition",
+   "cn": "DataFoundation分表映射表",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 63,
+   "empty": false
+  },
+  {
+   "t": "op_bids_incident_ebg_real_time_details_ods",
+   "cn": "BIDS实时同步EBG数据",
+   "mod": "",
+   "cate": "事件/通知/调查",
+   "grain": "ODS源层",
+   "rows": 56,
+   "empty": false
+  },
+  {
+   "t": "network_redline_position_ebg_d_dwd_0",
+   "cn": "企业红线岗位-东莞",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 42,
+   "empty": false
+  },
+  {
+   "t": "network_redline_position_ebg_d_dwd_1",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 42,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rectify_notice_map_dim",
+   "cn": "",
+   "mod": "",
+   "cate": "整改",
+   "grain": "—",
+   "rows": 40,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_risk_elimination_carrier_overview_south_africa",
+   "cn": "运营商专项-南非看板",
+   "mod": "",
+   "cate": "风险",
+   "grain": "—",
+   "rows": 37,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_highrisk_commands_dropdown_d_dwd",
+   "cn": "高危命令拦截筛选器字段数据源表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 36,
+   "empty": false
+  },
+  {
+   "t": "nc_op_escalation_realtime_ebg_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 32,
+   "empty": false
+  },
+  {
+   "t": "nu_qu_nc_portray_bubble_solution_developer_final_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 28,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_network_insight_dwd",
+   "cn": "网络详单",
+   "mod": "",
+   "cate": "网络",
+   "grain": "DWD明细",
+   "rows": 28,
+   "empty": false
+  },
+  {
+   "t": "nu_qu_nc_portray_bubble_l1_reviewer_final_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 27,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rfc_approve_dwd",
+   "cn": "变更审批人明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 27,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_lithium_batteries_risk_dwd",
+   "cn": "核心机房锂电巡检风险明细表",
+   "mod": "",
+   "cate": "风险",
+   "grain": "DWD明细",
+   "rows": 22,
+   "empty": false
+  },
+  {
+   "t": "knet_third_party_product_dwd_1",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 17,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_software_mm_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 14,
+   "empty": false
+  },
+  {
+   "t": "nc_op_snap_table_map",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 12,
+   "empty": false
+  },
+  {
+   "t": "nu_qu_nc_portray_solution_developer_final_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 12,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_saca_self_censorship_dws",
+   "cn": "自主扣分统计表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS汇总",
+   "rows": 4,
+   "empty": false
+  },
+  {
+   "t": "nc_op_snap_table_map_base",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 2,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_rfc_task_report_by_fme_dws",
+   "cn": "实施任务跨级别操作统计表",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS汇总",
+   "rows": 2,
+   "empty": false
+  },
+  {
+   "t": "t_df_temp_latest_table_partition",
+   "cn": "分区映射中间表",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 1,
+   "empty": false
+  },
+  {
+   "t": "op_ioc_sa_escalation_dtl_dwd",
+   "cn": "管理升级详单表",
+   "mod": "管理升级",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "clb_major_incidents_sr_dwd",
+   "cn": "",
+   "mod": "事故",
+   "cate": "重大事件",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_incident_s_ga",
+   "cn": "",
+   "mod": "事故",
+   "cate": "事件/通知/调查",
+   "grain": "全量GA",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_dtl_m_dwd",
+   "cn": "",
+   "mod": "网络变更",
+   "cate": "任务/工单",
+   "grain": "月粒度明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "cs_rc_task_info_ga",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "全量GA",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "knet_third_party_product_dwd_0",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "mr_parent_customer_details_eos_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "mr_reverse_space_details_gauss_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "mr_reverse_space_details_gauss_dwd_20742",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "mr_reverse_space_details_gauss_dwd_20743",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "mr_table_division_relationship_temp",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "mr_timeliness_analysis_cyrr_detailed_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nc_itr_iwar_dwd",
+   "cn": "IWAR改进明细表",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nc_mec_dwd_itr_rfc_task_f_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "ODS源层",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nc_mec_jtf_tasks_b_5600_ods",
+   "cn": "SR宽表运营商ICARE+",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nc_mec_ogg_cs_incidents_all_b_5600_ods",
+   "cn": "SR单",
+   "mod": "",
+   "cate": "事件/通知/调查",
+   "grain": "ODS源层",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nc_op_ioc_escalation_dtl_cnbg_bids_ods",
+   "cn": "管理升级详单",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "ODS源层",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nc_op_ogg_erisk_ebg_query_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "风险",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nc_op_ogg_erisk_ebg_third_party_dwd_0",
+   "cn": "",
+   "mod": "",
+   "cate": "风险",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nc_op_ogg_erisk_ebg_third_party_dwd_1",
+   "cn": "",
+   "mod": "",
+   "cate": "风险",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nc_op_ogg_erisk_ebg_third_party_m_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "风险",
+   "grain": "月粒度明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nc_op_sa_sr_problem_stat_dws",
+   "cn": "网上问题ALL BG统计表（非实时）",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "DWS汇总",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nt_minor_change_project_configuration_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "变更",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nt_minor_change_rule_configuration_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "变更",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nt_network_tuning_ga",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "全量GA",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nu_qu_nc_portray_bubble_d_dwd_1",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nu_qu_nc_portray_d_dwd_1",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nu_qu_nc_portray_l1_reviewer_final_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nu_qu_nc_portray_l2_reviewer_final_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nu_qu_nc_portray_snapshot_dwd_bak_260206",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "nu_qu_nc_portray_snapshot_dwd_bak_260206_copy1",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_api_root_cause_management_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_combat_task_dwd",
+   "cn": "作战任务表",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_combat_task_dws",
+   "cn": "作战任务统计表",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS汇总",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_dwd_snap_0",
+   "cn": "数字证书2026快照明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_dwd_snap_1",
+   "cn": "数字证书2026快照明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_dwd_snap_10",
+   "cn": "数字证书2026快照明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_dwd_snap_11",
+   "cn": "数字证书2026快照明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_dwd_snap_5",
+   "cn": "数字证书2026快照明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_dwd_snap_6",
+   "cn": "数字证书2026快照明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_dwd_snap_7",
+   "cn": "数字证书2026快照明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_dwd_snap_8",
+   "cn": "数字证书2026快照明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_2026_d_dwd_snap_9",
+   "cn": "数字证书2026快照明细表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "日粒度明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_history_dwd_0",
+   "cn": "数字证书明细历史快照表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_history_dwd_1",
+   "cn": "数字证书明细历史快照表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_history_dwd_10",
+   "cn": "数字证书明细历史快照表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_history_dwd_11",
+   "cn": "数字证书明细历史快照表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_history_dwd_2",
+   "cn": "数字证书明细历史快照表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_history_dwd_4",
+   "cn": "数字证书明细历史快照表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_history_dwd_5",
+   "cn": "数字证书明细历史快照表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_history_dwd_6",
+   "cn": "数字证书明细历史快照表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_history_dwd_7",
+   "cn": "数字证书明细历史快照表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_history_dwd_8",
+   "cn": "数字证书明细历史快照表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_digital_cert_history_dwd_9",
+   "cn": "数字证书明细历史快照表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_du_ratio_dws",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS汇总",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_emergency_recovery_dws_20743",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_eos_snap_dwd_01",
+   "cn": "OP_IOC_EOS_D_DWD",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_eos_snap_dwd_05",
+   "cn": "OP_IOC_EOS_D_DWD",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_eos_snap_dwd_06",
+   "cn": "OP_IOC_EOS_D_DWD",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_eos_snap_dwd_07",
+   "cn": "OP_IOC_EOS_D_DWD",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_eos_snap_dwd_08",
+   "cn": "OP_IOC_EOS_D_DWD",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_eos_snap_dwd_09",
+   "cn": "OP_IOC_EOS_D_DWD",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_eos_snap_dwd_10",
+   "cn": "OP_IOC_EOS_D_DWD",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_eos_snap_dwd_11",
+   "cn": "OP_IOC_EOS_D_DWD",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_eos_snap_dwd_12",
+   "cn": "OP_IOC_EOS_D_DWD",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_license_data_stat_d_dropdown_dws",
+   "cn": "",
+   "mod": "",
+   "cate": "License",
+   "grain": "DWS汇总",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rectify_check_d_dwd_snap_cpoy",
+   "cn": "",
+   "mod": "",
+   "cate": "整改",
+   "grain": "日粒度明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rectify_check_task_ga_ebg_ods",
+   "cn": "整改L2同步数据",
+   "mod": "",
+   "cate": "整改",
+   "grain": "ODS源层",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rectify_release_info_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "整改",
+   "grain": "ODS源层",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_redline_owner_snapshot_dwd",
+   "cn": "红线人员快照表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_redline_owner_snapshot_dws",
+   "cn": "红线人员快照统计表",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWS汇总",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_region_repoffice_info_dim",
+   "cn": "地代编码与短名映射数据-网络保障业务IOC使用",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_a_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_by_change_h_dws_20738",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_by_change_h_dws_20739",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_by_change_h_dws_20740",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_by_change_h_dws_20741",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_by_change_h_dws_20742",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_by_change_h_dws_20743",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_dtl_h_dwd_test",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "小时明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_dtl_h_dwd_test_1",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "小时明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_h_dws_20738",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_h_dws_20739",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_h_dws_20740",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_h_dws_20741",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_h_dws_20742",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_h_dws_20743",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_real_time_m_dws_0",
+   "cn": "实施任务统计表",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_rfc_task_report_real_time_m_dws_1",
+   "cn": "实施任务统计表",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_sd_rfc_dtl_ebg_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_sr_ebg_p1_p2_dws_20609",
+   "cn": "",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_sr_ebg_p1_p2_dws_20610",
+   "cn": "",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_sr_ebg_p1_p2_dws_20611",
+   "cn": "",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_sr_ebg_p1_p2_dws_20612",
+   "cn": "",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_sr_ebg_p1_p2_dws_20613",
+   "cn": "",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_sr_ebg_p1_p2_dws_20614",
+   "cn": "",
+   "mod": "",
+   "cate": "服务请求(问题单)",
+   "grain": "DWS分区(_0/_1)",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_test",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "op_ioc_tired_driving_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "IOC运营",
+   "grain": "ODS源层",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "rfc_h_test",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "rfc_h_test_0",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "rfc_h_test_1",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "rfc_h_test_2",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "rfc_h_test_3",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "rfc_h_test_4",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "t_highrisk_commands_record_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "t_opcenter_plan_network_drill_dtl_20738",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "t_opcenter_plan_network_drill_dtl_20739",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "t_opcenter_plan_network_drill_dtl_20740",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "t_opcenter_plan_network_drill_dtl_20741",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "t_opcenter_plan_network_drill_dtl_20742",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "t_opcenter_plan_network_drill_dtl_20743",
+   "cn": "",
+   "mod": "",
+   "cate": "网络",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "task_work_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "task_work_ebg_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "任务/工单",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "temp_model1",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "uc_df_latest_table_partition",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "uc_df_temp_latest_table_partition",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "—",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "uc_highrisk_commands_incpt_threetimesday_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "DWD明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "uc_highrisk_commands_threetimes_day_d_dwd",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "日粒度明细",
+   "rows": 0,
+   "empty": true
+  },
+  {
+   "t": "uc_t_highrisk_commands_ods",
+   "cn": "",
+   "mod": "",
+   "cate": "其他",
+   "grain": "ODS源层",
+   "rows": 0,
+   "empty": true
+  }
+ ]
+}
