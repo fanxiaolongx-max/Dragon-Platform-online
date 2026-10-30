@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from app.config import settings
 from app.core.logger import logger
 from app.core.exceptions import register_exception_handlers
-from app.routers import health, report, data_element, data_source, data_query, table_map
+from app.routers import health, report, data_element, data_source, data_query, table_map, agent
 from app.db import close_client
 
 logging.getLogger("uvicorn").setLevel(logging.INFO)
@@ -47,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(data_source.router, prefix="/api")
     app.include_router(data_query.router, prefix="/api")
     app.include_router(table_map.router, prefix="/api")
+    app.include_router(agent.router, prefix="/api")
 
     # 挂载静态文件目录（基座要求 static/ 可访问）
     if os.path.isdir(STATIC_DIR):
@@ -71,18 +72,18 @@ def create_app() -> FastAPI:
         await close_client()
         logger.info(f"{settings.APP_NAME} 已关闭，基座客户端连接已释放")
 
-    # 根路径（主页）直接返回 API 调试台页面
+    # 根路径（主页）：唯一前端页面 static/index.html（报告工作台 + Dragon Claw 助理）
+    index_file = os.path.join(STATIC_DIR, "index.html")
+
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def root():
-        return FileResponse(os.path.join(STATIC_DIR, "api_test.html"))
+        return FileResponse(index_file)
 
-    # API 调试台（主页，与 / 相同页面；保留原路由以便旧链接访问）
+    # 旧链接 /api-test 与 /index.html 指向同一页面
     @app.get("/api-test", response_class=HTMLResponse, include_in_schema=False)
-    async def api_test_page():
-        f = os.path.join(STATIC_DIR, "api_test.html")
-        if os.path.isfile(f):
-            return FileResponse(f)
-        return HTMLResponse("<h3>api_test.html 不存在</h3>", status_code=404)
+    @app.get("/index.html", response_class=HTMLResponse, include_in_schema=False)
+    async def index_alias():
+        return FileResponse(index_file)
 
     return app
 
