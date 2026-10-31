@@ -7,7 +7,7 @@ const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
 const requests = [], errors = [];
 const prefix = '/digital-human/dh/fixture-app/';
-let executionFailure=null;
+let executionFailure=null, htmlFallback=false;
 const adc = `window.ADCChat={configured:true,busy:false,environment:'Fixture',newSession:async()=> 'fixture',stop(){},ask:async(_q,o)=>o.onUpdate('验证回答。\\n\\n\`\`\`js\\nconst answer = 2;\\n\`\`\`')};`;
 const server = http.createServer((req, res) => {
   requests.push(req.url);
@@ -32,8 +32,8 @@ const server = http.createServer((req, res) => {
   }
   if (url === '/__platform/adc/client.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(adc); return; }
   if (url.startsWith('/adc-agent/')) { res.setHeader('Content-Type', 'text/html'); res.end('<textarea></textarea>'); return; }
-  // Simulate a base that routes /dev back to the report; only static assets work.
-  const file = url === '/' || url === '/dev' ? 'static/index.html'
+  // Simulate a base that routes /dev (or all HTML paths when htmlFallback is active) back to the report.
+  const file = url === '/' || url === '/dev' || (htmlFallback && url.endsWith('.html')) ? 'static/index.html'
     : url.startsWith('/static/') ? url.slice(1) : 'static' + url;
   const target = path.resolve(root, file);
   if (!target.startsWith(root + path.sep) || !fs.existsSync(target) || fs.statSync(target).isDirectory()) { res.statusCode = 404; res.end(); return; }
@@ -254,7 +254,9 @@ async function assistantFeedback(page){
   console.log('Geometry and dark buttons passed.');
   await workspace(page, origin, '/');
   await workspace(page, origin, prefix);
+  htmlFallback = true;
   await workspace(page, origin, prefix, true);
+  htmlFallback = false;
   assert(!requests.some(url => /\/dev(?:\?|$)/.test(url)), 'Developer mode must not navigate to /dev');
   assert.deepEqual(errors, []);
   console.log('PASS: restored geometry, four-edge dragging, both resize handles, dark buttons, iframe zoom, viewport resizing, visual viewport zoom, modal state/focus, root and prefixed API paths, sandboxed embedding.');

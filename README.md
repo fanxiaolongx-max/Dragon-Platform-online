@@ -5,7 +5,7 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.4.3`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.4.4`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
@@ -61,7 +61,7 @@ Dragon-Platform-online/
 ├── requirements.txt            # Python 依赖清单
 ├── run.py                      # 本地独立启动脚本 (uvicorn)
 ├── _platform_host.py           # Dragon Platform 宿主反向代理前缀适配层
-├── AiOps-Report.version        # 版本标识文件 (1.4.3)
+├── AiOps-Report.version        # 版本标识文件 (1.4.4)
 └── README.md                   # 项目说明文档
 ```
 
@@ -91,7 +91,7 @@ pip install -r requirements.txt
 
 ```env
 APP_NAME=AiOps-Report
-APP_VERSION=1.4.3
+APP_VERSION=1.4.4
 PORT=5600
 WORKERS=1
 RELOAD=true
@@ -138,7 +138,7 @@ Dragon Claw 浮窗在首次打开、恢复历史位置、拖拽、调整宽高�
 
 ---
 
-## 基座数据库契约与部署顺序（1.4.3）
+## 基座数据库契约与部署顺序（1.4.4）
 
 AIR 是接口前缀，不是新增的数据表：月报文档复用 `t_report_template`，格子、对话、配方与本月结果复用 `t_report_block`，格子及整体提示词复用 `t_report_config`。应用共用既有五张表，`/api/air/*` 请求中没有建表或改表逻辑。
 

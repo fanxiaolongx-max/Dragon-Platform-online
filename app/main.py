@@ -86,6 +86,7 @@ def create_app() -> FastAPI:
         return FileResponse(index_file)
 
     @app.get("/dev", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/dev.html", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/api-test", response_class=HTMLResponse, include_in_schema=False)
     async def dev_page():
         return FileResponse(dev_file)
