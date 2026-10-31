@@ -174,6 +174,11 @@
 .aibar-zoom{font-size:11px;padding:2px 4px;border:1px solid var(--dc-line-2);border-radius:6px;background:#0f172a;color:var(--dc-muted);cursor:pointer}
 .aibar-link{padding:3px 10px;border-radius:7px;font-size:11.5px;color:var(--dc-muted);border:1px solid var(--dc-line-2);background:rgba(30,41,59,.55);cursor:pointer;transition:all .15s}
 .aibar-link:hover:not(:disabled){color:var(--dc-strong);border-color:rgba(100,255,218,.45)}
+.aibar-link[aria-disabled=true]{color:var(--dc-muted);cursor:wait;opacity:.75}
+.aibar-frame-hint{padding:7px 12px;border-top:1px solid var(--dc-line);color:#b4c6df;background:rgba(30,41,59,.45);font-size:11.5px;line-height:1.6;flex:none}
+.aibar-frame-hint[hidden]{display:none}
+.aibar .dct-h{width:100%;text-align:left;font:inherit;color:inherit}
+.aibar .dct-h:focus-visible{outline-offset:-3px}
 #aiBarFrameWrap{display:none;border-top:0}
 #aiBarFrameWrap.open{display:block;position:relative;overflow:hidden;flex:1 1 0;min-height:0;border-top:1px solid var(--dc-line)}
 #aiBarFrameWrap.open iframe{position:absolute;top:0;left:0;border:0;display:block;background:#fff;transform-origin:top left}

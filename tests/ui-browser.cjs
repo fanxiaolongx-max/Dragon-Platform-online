@@ -7,6 +7,7 @@ const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
 const requests = [], errors = [];
 const prefix = '/digital-human/dh/fixture-app/';
+let executionFailure=null;
 const adc = `window.ADCChat={configured:true,busy:false,environment:'Fixture',newSession:async()=> 'fixture',stop(){},ask:async(_q,o)=>o.onUpdate('验证回答。\\n\\n\`\`\`js\\nconst answer = 2;\\n\`\`\`')};`;
 const server = http.createServer((req, res) => {
   requests.push(req.url);
@@ -14,6 +15,13 @@ const server = http.createServer((req, res) => {
   const nested = url.startsWith(prefix);
   if (nested) url = '/' + url.slice(prefix.length);
   res.setHeader('Access-Control-Allow-Origin', '*');
+  if(url.endsWith('/api/agent/execute') && executionFailure){
+    if(executionFailure.network){ req.socket.destroy(); return; }
+    res.statusCode=executionFailure.status;
+    res.setHeader('x-request-id','fixture-error-123');
+    res.setHeader('Content-Type',executionFailure.raw?'text/html':'application/json');
+    res.end(executionFailure.raw||JSON.stringify(executionFailure.json)); return;
+  }
   if (url.startsWith('/api/')) {
     res.setHeader('Content-Type', 'application/json');
     let data = [];
@@ -123,6 +131,84 @@ async function workspace(page, origin, pathname, sandbox = false) {
     await page.setViewportSize({ width: 1280, height: 800 });
   }
 }
+async function assistantFeedback(page){
+  await page.evaluate(()=>{
+    document.getElementById('aiBarAgent').checked=false;
+    window.ADCChat.configured=false;
+    window.ADCChat.ask=(_q,options)=>new Promise(resolve=>{
+      window.__finishFirst=()=>{window.ADCChat.configured=true;options.onUpdate('首次对话完成');resolve();};
+    });
+    void window.DragonClaw.send('首次连接测试');
+  });
+  await page.waitForFunction(()=>!!window.__finishFirst);
+  const toggle=page.locator('#aiBarFrameToggle');
+  assert.equal(await toggle.getAttribute('aria-disabled'),'true');
+  assert.equal(await toggle.evaluate(el=>el.disabled),false,'Waiting control must remain clickable to explain the restriction');
+  await toggle.click({force:true});
+  assert.match(await page.locator('#aiBarFrameHint').innerText(),/首次对话.*暂不能展开/);
+  assert.equal(await page.locator('#aiBarFrameWrap').evaluate(el=>el.classList.contains('open')),false);
+  await page.evaluate(()=>window.__finishFirst());
+  await page.waitForFunction(()=>document.getElementById('aiBarFrameToggle').getAttribute('aria-disabled')==='false');
+  await toggle.click();
+  assert.equal(await page.locator('#aiBarFrameWrap').evaluate(el=>el.classList.contains('open')),true);
+  await toggle.click();
+  // After initial connection, normal in-flight replies allow the original page to be shown.
+  await page.evaluate(()=>{delete window.__finishFirst;void window.DragonClaw.send('普通对话测试');});
+  await page.waitForFunction(()=>!!window.__finishFirst);
+  await toggle.click();
+  assert.equal(await page.locator('#aiBarFrameWrap').evaluate(el=>el.classList.contains('open')),true);
+  await page.evaluate(()=>window.__finishFirst());
+  await page.waitForFunction(()=>!document.getElementById('aiBarSend').classList.contains('busy'));
+  await toggle.click();
+
+  const cases=[
+    {status:200,json:{code:500,message:'数据源不存在: fixture-readonly; token="fixture-secret-value" <img src=x onerror=alert(1)>'}},
+    {status:503,json:{code:-1,message:'基座 API 暂时不可用'}},
+    {status:422,json:{detail:[{loc:['body','table'],msg:'Field required',input:'do-not-copy-validation-input'}]}},
+    {status:502,raw:'<html>gateway error token=do-not-copy-html</html>'},
+    {network:true},
+  ];
+  for(const fixture of cases){
+    executionFailure=fixture;
+    await page.evaluate(async()=>{
+      document.getElementById('aiBarAgent').checked=true;
+      window.__errorPrompts=[];
+      let step=0;
+      window.ADCChat.ask=async(prompt,options)=>{
+        window.__errorPrompts.push(prompt);
+        options.onUpdate(step++===0?'```dragon-action\n'+JSON.stringify({tool:'describe_table',args:{source:'netcare',table:'fixture_table',password:'do-not-copy-write-values'},reason:'查看表结构测试'})+'\n```':'查询失败，请核对环境与数据源。');
+      };
+      await window.DragonClaw.send('查看表结构');
+    });
+    const card=page.locator('.dct').last(), header=card.locator('.dct-h');
+    assert.match(await card.locator('.dct-st').innerText(),/失败.*查看详情/);
+    assert.equal(await header.getAttribute('aria-expanded'),'false');
+    await card.locator('.dct-st').click();
+    assert.equal(await header.getAttribute('aria-expanded'),'true');
+    const diagnostic=JSON.parse(await card.locator('pre code').innerText());
+    assert.equal(diagnostic.httpStatus,fixture.network?null:fixture.status);
+    assert.equal(diagnostic.code,fixture.json?.code??null);
+    assert.equal(diagnostic.tool,'describe_table');
+    assert.deepEqual(diagnostic.args,{source:'netcare',table:'fixture_table'});
+    assert.equal(diagnostic.requestId,fixture.network?'':'fixture-error-123');
+    if(fixture.status===200) assert.match(diagnostic.message,/数据源不存在: fixture-readonly/);
+    if(fixture.status===422) assert.match(diagnostic.message,/body.*table.*Field required/);
+    if(fixture.status===502) assert.match(diagnostic.message,/有效 JSON/);
+    if(fixture.network) assert.match(diagnostic.message,/网络请求未完成/);
+    const exposed=(await card.innerHTML())+await page.evaluate(()=>window.__errorPrompts.join('\n'));
+    for(const secret of ['fixture-secret-value','do-not-copy-html','do-not-copy-write-values','do-not-copy-validation-input']) assert(!exposed.includes(secret),'Diagnostic leaked '+secret);
+    assert.equal(await card.locator('img').count(),0,'Error text must not execute HTML');
+    await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__copiedDiagnostic=text;}}}));
+    await card.locator('.dcm-copy').click();
+    assert.deepEqual(JSON.parse(await page.evaluate(()=>window.__copiedDiagnostic)),diagnostic);
+    await header.focus(); await page.keyboard.press('Enter');
+    assert.equal(await header.getAttribute('aria-expanded'),'false');
+    await page.keyboard.press('Space');
+    assert.equal(await header.getAttribute('aria-expanded'),'true');
+  }
+  executionFailure=null;
+  console.log('PASS: first-session wait explanation, normal in-flight expansion, clickable/copyable error details, business/HTTP/validation/non-JSON/network failures and diagnostic redaction.');
+}
 (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const origin = 'http://127.0.0.1:' + server.address().port;
@@ -163,6 +249,7 @@ async function workspace(page, origin, pathname, sandbox = false) {
     fs.mkdirSync(process.env.UI_SCREENSHOTS, { recursive: true });
     await page.screenshot({ path: path.join(process.env.UI_SCREENSHOTS, 'dragon-claw-dark.png') });
   }
+  await assistantFeedback(page);
   await page.setViewportSize({ width: 1280, height: 800 });
   console.log('Geometry and dark buttons passed.');
   await workspace(page, origin, '/');

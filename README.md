@@ -5,7 +5,7 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.4.1`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.4.2`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
@@ -61,7 +61,7 @@ Dragon-Platform-online/
 ├── requirements.txt            # Python 依赖清单
 ├── run.py                      # 本地独立启动脚本 (uvicorn)
 ├── _platform_host.py           # Dragon Platform 宿主反向代理前缀适配层
-├── AiOps-Report.version        # 版本标识文件 (1.4.1)
+├── AiOps-Report.version        # 版本标识文件 (1.4.2)
 └── README.md                   # 项目说明文档
 ```
 
@@ -91,7 +91,7 @@ pip install -r requirements.txt
 
 ```env
 APP_NAME=AiOps-Report
-APP_VERSION=1.4.1
+APP_VERSION=1.4.2
 PORT=5600
 WORKERS=1
 RELOAD=true
@@ -117,6 +117,8 @@ python run.py
 Dragon Claw 浮窗在首次打开、恢复历史位置、拖拽、调整宽高、浏览器窗口及可见视口缩放时统一限制四边，始终保留可见区域内的边距；小视口自动降低最小宽高。标题栏、消息复制、代码复制与底部按钮使用助理的暗色样式。
 
 月报顶部「开发者模式」在当前页打开接近全屏的大弹窗，不跳转 `/dev`。它从应用静态资源加载已有工作台，沿用月报的 API 路径前缀；保留月报编辑状态与开发者表单，支持关闭按钮、Esc 和「AI 月报」返回入口。从开发者工作台打开 Dragon Claw 时会关闭弹窗并唤起月报中的同一个助理。独立的 `/dev` 与 `/api-test` 路由仍可使用。
+
+首次对话通过原 ADC 页面建立会话时，「展开」会显示「首次对话连接中…」与等待原因，点击时仍可查看提示；该次请求结束后恢复展开。已经建立会话后的普通对话不限制展开。数据调用失败时，点击卡片上的「失败 · 查看详情」可展开并复制后端错误文本、HTTP 状态、业务错误码、请求 ID（后端有返回时）、时间及工具/数据源/表名等上下文；HTTP 200 与业务成功分别展示。详情不附带完整响应、请求头、写入值或确认令牌，常见凭据会脱敏。
 
 浏览器回归测试使用本地模拟 API / ADC，覆盖越界位置恢复、四向拖动、两种尺寸调整、暗色按钮、视口缩放、根路径 / 基座前缀、沙箱嵌入与弹窗状态保留；GitHub Actions 测试通过后才发布 Release。真实基座仍需内网复核。
 

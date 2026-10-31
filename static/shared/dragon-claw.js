@@ -319,15 +319,19 @@
     if(a.tool==='execute_sql') return String(x.sql||'').slice(0,90);
     return (x.table||'')+(x.id?' · id='+x.id:'');
   }
+  let toolCardId=0;
   function toolCard(a){
     const risk=(caps?.tools||[]).find(t=>t.name===a.tool)?.risk || (/insert|update/.test(a.tool)?'write':/delete|execute/.test(a.tool)?'danger':'read');
     const d=document.createElement('div'); d.className='dct '+risk;
-    d.innerHTML='<div class="dct-h"><span class="dct-ico">'+(risk==='read'?ICON.search:risk==='write'?ICON.edit:ICON.alert)+'</span><span class="dct-t"><b>'+escH(TOOL_LABEL[a.tool]||a.tool)+'</b><span>'+escH(a.reason||argSummary(a))+'</span></span><span class="dct-st run">执行中</span><span class="dct-car">'+ICON.chevron+'</span></div><div class="dct-b"></div>';
-    d.querySelector('.dct-h').onclick=()=>{ if(!d.classList.contains('confirm')) d.classList.toggle('open'); };
+    const detailId='dc-tool-detail-'+(++toolCardId);
+    d.innerHTML='<button type="button" class="dct-h" aria-expanded="false" aria-controls="'+detailId+'"><span class="dct-ico">'+(risk==='read'?ICON.search:risk==='write'?ICON.edit:ICON.alert)+'</span><span class="dct-t"><b>'+escH(TOOL_LABEL[a.tool]||a.tool)+'</b><span>'+escH(a.reason||argSummary(a))+'</span></span><span class="dct-st run">执行中</span><span class="dct-car">'+ICON.chevron+'</span></button><div class="dct-b" id="'+detailId+'"></div>';
+    const header=d.querySelector('.dct-h');
+    const expand=value=>{d.classList.toggle('open',value);header.setAttribute('aria-expanded',String(value));};
+    header.onclick=()=>{ if(!d.classList.contains('confirm')) expand(!d.classList.contains('open')); };
     box.appendChild(d); scrollEnd();
     const stEl=d.querySelector('.dct-st'), bodyEl=d.querySelector('.dct-b');
     return {
-      el:d, body:bodyEl,
+      el:d, body:bodyEl, expand,
       status(kind, text){ stEl.className='dct-st '+kind; stEl.textContent=text; },
       detail(html){ bodyEl.innerHTML=html; }
     };
@@ -363,16 +367,51 @@
       +Object.entries(p.before).map(([k,v])=>'<tr><td>'+escH(k)+'</td><td><del>'+escH(fmtVal(v))+'</del></td></tr>').join('')+'</tbody></table></div>';
     return h;
   }
+  // Diagnostics keep useful error context while excluding credentials and response payloads.
+  function safeDiagnostic(value){
+    return String(value==null?'':value)
+      .replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/gi,'[私钥已隐藏]')
+      .replace(/\b(Bearer|Basic)\s+[^\s,;"'<>]+/gi,'$1 [已隐藏]')
+      .replace(/\b(?:set-cookie|cookie)\s*[:=][^\r\n]*/gi,'Cookie: [已隐藏]')
+      .replace(/((?:["']?)(?:authorization|cookie|set-cookie|password|passwd|api[_-]?key|(?:access[_-]?|refresh[_-]?|confirm[_-]?)?token|client[_-]?secret|secret|private[_-]?key)["']?\s*[:=]\s*)(?:"[^"\n]*"|'[^'\n]*'|[^\s,;<>]+)/gi,'$1[已隐藏]')
+      .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi,'$1[已隐藏]@')
+      .replace(/(\/apps\/[^/\s]+\/)~[^/\s]+/g,'$1~[已隐藏]')
+      .slice(0,12000);
+  }
+  function diagnosticOf(error,a){
+    const args={};
+    for(const key of ['source','table','keyword','limit']){
+      if(a.args?.[key]!==undefined) args[key]=safeDiagnostic(a.args[key]);
+    }
+    // Write values, confirmation tokens, full URLs, headers and raw responses are never copied.
+    return {
+      time:new Date().toISOString(),tool:safeDiagnostic(a.tool),args,
+      endpoint:'POST /api/agent/execute',
+      httpStatus:error.httpStatus??null,code:typeof error.businessCode==='number'?error.businessCode:typeof error.businessCode==='string'?safeDiagnostic(error.businessCode):null,
+      requestId:safeDiagnostic(error.requestId||''),
+      message:safeDiagnostic(error.message||'调用失败'),
+      note:error.httpStatus===200?'HTTP 200 只表示请求送达；请结合业务错误码和错误文本判断结果。':undefined
+    };
+  }
   async function callExecute(tool, args, token){
-    const r=await fetch(base()+'/agent/execute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tool, args, confirm_token:token||undefined})});
-    let j; try{ j=await r.json(); }catch(e){ throw new Error('HTTP '+r.status); }
-    if(j.code!==0) throw new Error(j.message||('HTTP '+r.status));
+    let r;
+    try{
+      r=await fetch(base()+'/agent/execute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tool, args, confirm_token:token||undefined})});
+    }catch(error){ throw new Error('网络请求未完成：'+safeDiagnostic(error.message)); }
+    let requestId=r.headers.get('x-request-id')||r.headers.get('request-id')||'';
+    const failed=(message,code)=>Object.assign(new Error(safeDiagnostic(message)),{httpStatus:r.status,businessCode:code,requestId});
+    let j; try{ j=await r.json(); }catch(error){ throw failed('服务未返回有效 JSON 响应；HTTP '+r.status,null); }
+    requestId=requestId||j?.requestId||j?.request_id||'';
+    if(!r.ok || !j || j.code!==0){
+      const validation=Array.isArray(j?.detail)?j.detail.map(item=>[...(item.loc||[]),item.msg||'参数不合法'].join(' · ')).join('; '):'';
+      throw failed(j?.message||validation||(typeof j?.detail==='string'?j.detail:'')||('HTTP '+r.status),j?.code??null);
+    }
     return j.data;
   }
   function askConfirm(card, data){
     return new Promise(resolve=>{
       const danger=data.risk==='danger';
-      card.el.classList.add('confirm');
+      card.el.classList.add('confirm'); card.expand(true);
       card.status('wait','待确认');
       card.detail(previewHtml(data.preview)+'<div class="dct-ask"><span>'+ICON.shield+(danger?'高危操作，确认后立即执行且记录审计':'确认后写入应用库并记录审计')+'</span><button type="button" class="dct-btn" data-a="no">拒绝</button><button type="button" class="dct-btn go'+(danger?' danger':'')+'" data-a="yes">确认执行</button></div>');
       const finish=v=>{ pendingConfirms.delete(finish); card.el.classList.remove('confirm'); card.el.querySelector('.dct-ask')?.remove(); resolve(v); };
@@ -401,8 +440,12 @@
       card.detail(readDetail(a, data.result));
       return {tool:a.tool, status:'ok', result:data.result};
     }catch(e){
-      card.status('err','失败'); card.detail('<div class="dct-sum dcm-err">'+escH(e.message)+'</div>'); card.el.classList.add('open');
-      return {tool:a.tool, status:'error', error:e.message};
+      const diagnostic=diagnosticOf(e,a);
+      card.status('err','失败 · 查看详情');
+      card.el.querySelector('.dct-h').title='点击查看错误详情';
+      card.detail('<div class="dct-sum dcm-err">'+escH(diagnostic.message)+'</div><div class="dct-sum">错误详情可复制，便于切换环境后对照排查。</div>'+preHtml(JSON.stringify(diagnostic,null,2),'错误详情'));
+      card.expand(false);
+      return {tool:a.tool, status:'error', error:diagnostic.message};
     }
   }
   function observation(results, errors){
@@ -414,7 +457,32 @@
   /* ================= 发送主流程 ================= */
   const wrapEl=wrap;
   function frameVisible(){ return wrapEl.classList.contains('open'); }
-  function setFrameVisible(v){ wrapEl.classList.toggle('open', v); $('#aiBarFrameToggle').textContent=v?'收起':'展开'; }
+  const frameToggle=$('#aiBarFrameToggle');
+  const frameHint=document.createElement('div');
+  frameHint.id='aiBarFrameHint'; frameHint.className='aibar-frame-hint';
+  frameHint.setAttribute('role','status'); frameHint.hidden=true;
+  frameToggle.closest('.aibar-frame-h').after(frameHint);
+  frameToggle.setAttribute('aria-describedby',frameHint.id);
+  frameToggle.setAttribute('aria-controls','aiBarFrameWrap');
+  let frameLocked=false;
+  const lockHint='正在通过原聊天页完成首次对话，暂不能展开；对话结束后可展开查看。';
+  function frameNotice(text){ frameHint.textContent=text; frameHint.hidden=!text; }
+  function lockFrame(value){
+    frameLocked=value;
+    // Keep this button clickable so the user can get the reason while it is unavailable.
+    frameToggle.disabled=false;
+    frameToggle.setAttribute('aria-disabled',String(value));
+    frameToggle.textContent=value?'首次对话连接中…':frameVisible()?'收起':'展开';
+    frameToggle.title=value?lockHint:'展开或收起原 ADC 聊天页';
+    frameNotice(value?lockHint:'首次对话已结束，现在可以展开原聊天页。');
+  }
+  function setFrameVisible(v){
+    if(frameLocked){ frameNotice(lockHint); return; }
+    wrapEl.classList.toggle('open', v);
+    frameToggle.textContent=v?'收起':'展开';
+    frameToggle.setAttribute('aria-expanded',String(v)); frameNotice('');
+    fit();
+  }
   /* 检测内嵌原页面是否已出现可见且空的聊天输入框（与 adc-chat findComposer 同口径） */
   function frameHasComposer(){
     try{
@@ -452,7 +520,7 @@
     try{
       if(first && !frameVisible()){
         /* 隐身展开：iframe 折叠时内部不布局、输入框无 clientRects 会被跳过；临时移到屏幕外，用户不可见但代码可检测到输入框 */
-        wrapEl.classList.add('stealth'); stealthed=true; $('#aiBarFrameToggle').disabled=true;
+        wrapEl.classList.add('stealth'); stealthed=true; lockFrame(true);
         ensureFrame();
         let ready=false;
         for(let i=0;i<100;i++){ await new Promise(r=>setTimeout(r,100)); if(frameHasComposer()){ ready=true; break; } }
@@ -462,7 +530,7 @@
       await C.ask(prompt, { onUpdate:t=>{ latest=t||''; onUpdate&&onUpdate(latest); } });
       return latest;
     } finally {
-      if(stealthed){ wrapEl.classList.remove('stealth'); $('#aiBarFrameToggle').disabled=false; }
+      if(stealthed){ wrapEl.classList.remove('stealth'); lockFrame(false); }
       qInp.removeAttribute('aria-disabled');
     }
   }
