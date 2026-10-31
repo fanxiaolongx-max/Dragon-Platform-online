@@ -28,7 +28,6 @@
   dialog.querySelector('.air-developer-close').onclick=close;
   dialog.addEventListener('close',()=>{
     trigger.setAttribute('aria-expanded','false');
-    trigger.focus({preventScroll:true});
   });
 
   function embeddedDocument(source){

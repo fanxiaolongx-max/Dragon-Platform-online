@@ -107,6 +107,7 @@ async function workspace(page, origin, pathname, sandbox = false) {
   await frame.locator('.topbar button.topbar-ai').click();
   await page.waitForFunction(() => !document.querySelector('#airDeveloper').open && !document.querySelector('#aiBar').classList.contains('collapsed'));
   await contained(page);
+  assert.equal(await page.locator('#aiBarQ').evaluate(el => el === document.activeElement),true,'Opening the shared assistant should focus its input');
   assert.equal(page.url(), url);
   await page.locator('#aiBarClose').click();
   await page.locator('#airDeveloperOpen').click();
