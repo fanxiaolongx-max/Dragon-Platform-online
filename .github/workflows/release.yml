@@ -1,0 +1,89 @@
+name: Package AiOps-Report
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aiops-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test packaging boundaries
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Build application packages
+        run: python scripts/build_release.py
+      - name: Verify checksums
+        working-directory: dist
+        run: sha256sum --check SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AiOps-Report-${{ github.sha }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: AiOps-Report-${{ github.sha }}
+          path: dist
+      - name: Publish downloadable Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=$(jq -r .tag dist/release.json)
+          version=$(jq -r .version dist/release.json)
+          cat > notes.md <<EOF
+          自动构建：AiOps-Report ${version}
+          源码提交：${SOURCE_COMMIT}
+
+          - **AiOps-Report-base.zip**：数字人基座部署包，根目录含 run.py、requirements.txt、app/、static/ 与初始化 SQL。
+          - **AiOps-Report-platform.zip**：Dragon Platform 导入包，额外含 platform-app.json，入口 app.main:create_app，健康检查 /health。在首页「导入 HTML / ZIP / SKILL」选择此文件。
+          - **SHA256SUMS**：两个 ZIP 的 SHA-256 校验值；release.json 记录源码提交及版本。
+
+          两个包都不含 .env、业务数据库、日志、虚拟环境或 wheels。新环境需安装 Python，并能通过网络或内网 pip 镜像安装 requirements.txt；隔离网络需另行准备匹配目标系统与 Python 版本的离线依赖。
+          包只迁移应用代码与初始化 SQL；基座连接、模型配置和已有业务数据需在目标环境单独配置或迁移。基座包保留 MySQL 初始化 SQL，平台使用 SQLite 初始化 SQL；真实内网基座仍需部署验证。
+          EOF
+          if gh release view "$tag" --json isDraft --jq .isDraft > draft.txt 2> lookup.err; then
+            if [ "$(cat draft.txt)" = false ]; then
+              echo "Release $tag is already published; preserving its assets."
+              exit 0
+            fi
+          else
+            if ! grep -qi 'release not found\|HTTP 404' lookup.err; then
+              cat lookup.err >&2
+              exit 1
+            fi
+            gh release create "$tag" --target "$SOURCE_COMMIT" --draft \
+              --title "AiOps-Report ${version} · ${SOURCE_COMMIT:0:12}" --notes-file notes.md
+          fi
+          gh release upload "$tag" dist/AiOps-Report-base.zip dist/AiOps-Report-platform.zip \
+            dist/SHA256SUMS dist/release.json --clobber
+          gh release edit "$tag" --draft=false --latest --notes-file notes.md

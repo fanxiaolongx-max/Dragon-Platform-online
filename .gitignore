@@ -21,3 +21,15 @@ Thumbs.db
 
 # Platform runner script
 _platform_host.py
+
+# Local configuration, runtime databases and release output
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+dist/
