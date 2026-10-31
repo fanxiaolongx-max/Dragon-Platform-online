@@ -25,7 +25,9 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
-      - name: Test packaging boundaries
+      - name: Install application test dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Test application and packaging contracts
         run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Build application packages
         run: python scripts/build_release.py
@@ -86,6 +88,8 @@ jobs:
           - **AiOps-Report-base.zip**：数字人基座部署包，根目录含 run.py、requirements.txt、app/、static/ 与初始化 SQL。
           - **AiOps-Report-platform.zip**：Dragon Platform 导入包，额外含 platform-app.json，入口 app.main:create_app，健康检查 /health。在首页「导入 HTML / ZIP / SKILL」选择此文件。
           - **SHA256SUMS**：两个 ZIP 的 SHA-256 校验值；release.json 记录源码提交及版本。
+
+          数据库部署：基座由 DBA 手动执行 db/init.sql / db/upgrade.sql；平台包启用严格基座契约，须先更新宿主平台，再由管理员从运维菜单预览并部署 SQLite 脚本。启动和业务请求不会自动补表。
 
           两个包都不含 .env、业务数据库、日志、虚拟环境或 wheels。新环境需安装 Python，并能通过网络或内网 pip 镜像安装 requirements.txt；隔离网络需另行准备匹配目标系统与 Python 版本的离线依赖。
           包只迁移应用代码与初始化 SQL；基座连接、模型配置和已有业务数据需在目标环境单独配置或迁移。基座包保留 MySQL 初始化 SQL，平台使用 SQLite 初始化 SQL；真实内网基座仍需部署验证。

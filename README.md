@@ -5,7 +5,7 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.4.2`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.4.3`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
@@ -61,7 +61,7 @@ Dragon-Platform-online/
 ├── requirements.txt            # Python 依赖清单
 ├── run.py                      # 本地独立启动脚本 (uvicorn)
 ├── _platform_host.py           # Dragon Platform 宿主反向代理前缀适配层
-├── AiOps-Report.version        # 版本标识文件 (1.4.2)
+├── AiOps-Report.version        # 版本标识文件 (1.4.3)
 └── README.md                   # 项目说明文档
 ```
 
@@ -91,7 +91,7 @@ pip install -r requirements.txt
 
 ```env
 APP_NAME=AiOps-Report
-APP_VERSION=1.4.2
+APP_VERSION=1.4.3
 PORT=5600
 WORKERS=1
 RELOAD=true
@@ -124,7 +124,7 @@ Dragon Claw 浮窗在首次打开、恢复历史位置、拖拽、调整宽高�
 
 ### 方式二：在 Dragon Platform 中托管运行
 
-从 [Releases](https://github.com/fanxiaolongx-max/Dragon-Platform-online/releases/latest) 下载 **`AiOps-Report-platform.zip`**，在目标平台首页点击「导入 HTML / ZIP / SKILL」并选择该文件。平台会识别为 Python 应用，安装依赖并启动；同名应用可选择更新，更新时保留目标应用数据库。请下载 Release 的附件 ZIP。
+从 [Releases](https://github.com/fanxiaolongx-max/Dragon-Platform-online/releases/latest) 下载 **`AiOps-Report-platform.zip`**，在目标平台首页点击「导入 HTML / ZIP / SKILL」并选择该文件。平台会识别为 Python 应用，安装依赖并启动；首次使用前由管理员显式部署应用表。同名应用可选择更新，更新时保留目标应用数据库。请下载 Release 的附件 ZIP。
 
 本服务已无缝适配 **Dragon Platform** 托管体系：
 
@@ -137,6 +137,25 @@ Dragon Claw 浮窗在首次打开、恢复历史位置、拖拽、调整宽高�
    - 在状态胶囊中点击 **🗄️ 查看分配的数据库**，可直接查看平台为当前应用分配的只读业务库名称与独立读写库路径。
 
 ---
+
+## 基座数据库契约与部署顺序（1.4.3）
+
+AIR 是接口前缀，不是新增的数据表：月报文档复用 `t_report_template`，格子、对话、配方与本月结果复用 `t_report_block`，格子及整体提示词复用 `t_report_config`。应用共用既有五张表，`/api/air/*` 请求中没有建表或改表逻辑。
+
+| 环境 | 首次部署 | 后续升级 | 运行期 |
+| --- | --- | --- | --- |
+| 数字人基座（MySQL） | DBA 在分配的 `APP_SCHEMA` 中手动执行 `db/init.sql` | DBA 审阅并手动执行 `db/upgrade.sql` | 应用只经基座 REST API 读写；不发 DDL |
+| Dragon Platform 基座契约（SQLite） | 管理员在右上角运维菜单预览并确认「初始化应用表」 | 预览并确认「升级应用表」 | 导入、启动、重启均不自动补表；写 API 只允许受限 DML |
+
+**先更新 Dragon Platform，再导入本版 `AiOps-Report-platform.zip`。** 平台包声明 `databaseContract: "digital-human"`；宿主必须支持此契约，新版 AiOps 不会在旧宿主上静默按宽松模式运行。已有应用更新保留数据库；本版升级 SQL 仅幂等补齐五张表，不重放种子、不删除或重写已有月报。新初始化的两种数据库采用相同的来源/元素种子；SQLite 不再额外插入独有的示例报告，初始化脚本重复执行保留已存在的业务键。
+
+业务数据仍需在目标环境配置：应用表使用 `datasourceId + schema`，业务表只使用配置的 NetCare `datasourceName`，没有自动回退到平台 `report.db`。每次查询最多 1000 行；AIR 内部文档、格子、配置按 LIMIT/OFFSET 分页读取，超过单页也不静默截断。禁止通过查询接口的 WITH 隐藏写入。写接口只接受单条 INSERT / UPDATE / DELETE，UPDATE / DELETE 必须有外层 WHERE，不回传自增 ID；应用按业务键反查。
+
+`db/init.sql` / `db/upgrade.sql` 与 SQLite 对应脚本都随 Release 分发。没有采用未经确认的 `init/`、`update/` 自动导包钩子。平台的 SQL 预览与执行需要管理员权限、脚本摘要确认；数据库事务失败回滚。
+
+对齐范围是需求广场 #142 的数据库相关红线（1/2/3/6/7/8/9/12）。月报主页、页内开发者弹窗按后续用户要求保留。SQLite 不是 MySQL 引擎复刻，平台单进程宿主、真实基座多进程/网关/身份注入与内网权限仍须分别验收；本次不宣称十四条历史红线全部无差异。
+
+验证覆盖 AIR 经模拟基座 REST 完成保存/读回/更新/删除、无返回自增 ID、缺表不自建、禁止 DDL、源表只读、两种部署脚本的表/字段与种子一致、重复部署保留数据。应用运行代码不引入 sqlite3 / SQLAlchemy / MySQL 直连；测试中的 SQLite 仅作为假基座。
 
 ## 📦 推送后自动打包与发布
 

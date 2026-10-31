@@ -12,6 +12,7 @@ from app.core.logger import logger
 from app.core.exceptions import register_exception_handlers
 from app.routers import health, report, data_element, data_source, data_query, table_map, agent, air
 from app.db import close_client, detect_sql_dialect
+from app.utils.sql_contract import assert_host_contract
 
 logging.getLogger("uvicorn").setLevel(logging.INFO)
 
@@ -66,6 +67,7 @@ def create_app() -> FastAPI:
     # 启动事件
     @app.on_event("startup")
     async def startup_event():
+        assert_host_contract()
         await detect_sql_dialect()
         logger.info(f"{settings.APP_NAME} v{settings.APP_VERSION} 启动完成")
 

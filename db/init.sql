@@ -1,7 +1,7 @@
 -- ============================================================
 -- 写报告服务 - 数据库初始化脚本
 -- 服务名: platform-write-report
--- 数据库: aiopsdb_dev
+-- 目标库: 基座分配的 APP_SCHEMA（应用 UUID），不得在业务库执行
 -- 字符集: utf8mb4
 -- ============================================================
 
@@ -107,7 +107,7 @@ VALUES
   ('source_event', '事件与告警统计', 'static',
    '{"data":{"monthly_incident":12,"major_alarm":3,"critical_event":1,"handle_rate":"91.7%"}}',
    '事件与告警数据')
-ON DUPLICATE KEY UPDATE `name`=VALUES(`name`);
+ON DUPLICATE KEY UPDATE `source_key`=`source_key`;
 
 -- 数据元素样例
 INSERT INTO `t_data_element` (`element_key`, `name`, `category`, `data_kind`, `data_type`, `is_calc`, `default_value`, `description`, `source_db`, `calc_source`, `static_ref`)
@@ -131,6 +131,6 @@ VALUES
    '事件类别分布（饼图）', 'netcare', '', NULL),
   ('device_bar', '设备状态柱状图', '图表数据', 'form', 'string', 0, NULL,
    '设备状态分布（柱状图）', 'netcare', '', NULL),
-  ('risk_completion_rate', '中高风险处置完成率', '风险指标', 'percent', 1, NULL,
+  ('risk_completion_rate', '中高风险处置完成率', '风险指标', 'indicator', 'percent', 1, NULL,
    '中高风险任务的处置完成率', 'netcare', 'default_set', 'risk_completion_rate')
-ON DUPLICATE KEY UPDATE `name`=VALUES(`name`);
+ON DUPLICATE KEY UPDATE `element_key`=`element_key`;

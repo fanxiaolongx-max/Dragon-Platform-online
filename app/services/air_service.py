@@ -75,6 +75,19 @@ def _cell_title(cell: dict) -> str:
 # 读
 # --------------------------------------------------------------------
 
+async def _all_rows(sql: str) -> list[dict]:
+    """内部月报数据按基座单页 1000 行限制分页，不能静默截断格子与配置。"""
+    if not re.search(r"\bORDER\s+BY\b", sql, re.I):
+        sql += " ORDER BY id"
+    result, offset = [], 0
+    while True:
+        rows = await query_app_schema(f"{sql} LIMIT {DATA_LIMIT} OFFSET {offset}", limit=DATA_LIMIT)
+        result.extend(rows)
+        if len(rows) < DATA_LIMIT:
+            return result
+        offset += DATA_LIMIT
+
+
 async def _report_row(report_id: int) -> dict:
     rows = await query_app_schema(
         f"SELECT * FROM t_report_template WHERE id = {report_id} AND description LIKE '{KIND}:%' LIMIT 1", limit=1)
@@ -84,9 +97,8 @@ async def _report_row(report_id: int) -> dict:
 
 
 async def list_documents() -> list[dict]:
-    rows = await query_app_schema(
-        f"SELECT id, name, content, updated_at FROM t_report_template WHERE description LIKE '{KIND}:%' ORDER BY updated_at DESC, id DESC",
-        limit=DATA_LIMIT)
+    rows = await _all_rows(
+        f"SELECT id, name, content, updated_at FROM t_report_template WHERE description LIKE '{KIND}:%' ORDER BY updated_at DESC, id DESC")
     result = []
     for row in rows:
         content = _loads(row.get("content"), {})
@@ -99,11 +111,10 @@ async def read_document(report_id: Any) -> dict:
     report_id = _report_id(report_id)
     row = await _report_row(report_id)
     content = _loads(row.get("content"), {})
-    blocks = await query_app_schema(
-        f"SELECT * FROM t_report_block WHERE report_id = {report_id} AND chart_type = '{CELL_TYPE}' ORDER BY order_no, id",
-        limit=DATA_LIMIT)
-    configs = await query_app_schema(
-        f"SELECT id, block_id, section, config_text FROM t_report_config WHERE report_id = {report_id}", limit=DATA_LIMIT)
+    blocks = await _all_rows(
+        f"SELECT * FROM t_report_block WHERE report_id = {report_id} AND chart_type = '{CELL_TYPE}' ORDER BY order_no, id")
+    configs = await _all_rows(
+        f"SELECT id, block_id, section, config_text FROM t_report_config WHERE report_id = {report_id}")
     prompts = {c["block_id"]: _loads(c.get("config_text"), {}).get("prompt") for c in configs if c.get("section") == "prompt" and c.get("block_id") is not None}
     style_row = next((c for c in configs if c.get("section") == "style" and c.get("block_id") is None), None)
 
@@ -208,8 +219,8 @@ async def save_document(doc: dict) -> dict:
         report_id = rows[0]["id"]
 
     # 格子：只更新有变化的行，新增缺少的，删除已经不在月报里的。
-    existing = {b["block_key"]: b for b in await query_app_schema(
-        f"SELECT * FROM t_report_block WHERE report_id = {report_id} AND chart_type = '{CELL_TYPE}'", limit=DATA_LIMIT)}
+    existing = {b["block_key"]: b for b in await _all_rows(
+        f"SELECT * FROM t_report_block WHERE report_id = {report_id} AND chart_type = '{CELL_TYPE}'")}
     wanted = set()
     for order, item in enumerate(cells):
         cell = dict(item["cell"])
@@ -237,10 +248,10 @@ async def save_document(doc: dict) -> dict:
             await execute_app_schema(f"DELETE FROM t_report_block WHERE id = {old['id']}")
 
     # 提示词写进配置表。
-    ids = {b["block_key"]: b["id"] for b in await query_app_schema(
-        f"SELECT id, block_key FROM t_report_block WHERE report_id = {report_id} AND chart_type = '{CELL_TYPE}'", limit=DATA_LIMIT)}
-    configs = {(c["block_id"], c["section"]): c for c in await query_app_schema(
-        f"SELECT id, block_id, section, config_text FROM t_report_config WHERE report_id = {report_id}", limit=DATA_LIMIT)}
+    ids = {b["block_key"]: b["id"] for b in await _all_rows(
+        f"SELECT id, block_key FROM t_report_block WHERE report_id = {report_id} AND chart_type = '{CELL_TYPE}'")}
+    configs = {(c["block_id"], c["section"]): c for c in await _all_rows(
+        f"SELECT id, block_id, section, config_text FROM t_report_config WHERE report_id = {report_id}")}
     for item in cells:
         block_id = ids.get(item["cell"]["id"])
         if block_id is not None:

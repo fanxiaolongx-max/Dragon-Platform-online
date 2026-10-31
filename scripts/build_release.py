@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = {
     "requirements.txt", "run.py", "AiOps-Report.version", "app/main.py",
-    "static/index.html", "db/init.sql", "db/init.sqlite.sql",
+    "static/index.html", "db/init.sql", "db/init.sqlite.sql", "db/upgrade.sql", "db/upgrade.sqlite.sql",
 }
 TOP_FILES = {"requirements.txt", "run.py", "AiOps-Report.version", "README.md"}
 SKIP_DIRS = {
@@ -36,7 +36,7 @@ def included(name):
             or re.match(r"(secrets?|credentials?|tokens?)(\.|$)", basename)):
         return False
     return (name in TOP_FILES or path.parts[0] in {"app", "static"}
-            or name in {"db/init.sql", "db/init.sqlite.sql"})
+            or name in {"db/init.sql", "db/init.sqlite.sql", "db/upgrade.sql", "db/upgrade.sqlite.sql"})
 
 
 def source_files(root):
@@ -88,6 +88,7 @@ def build(root, output):
         "name": "AiOps-Report", "version": version,
         "entry": "app.main:create_app", "factory": True,
         "interface": "asgi", "healthPath": "/health",
+        "databaseContract": "digital-human",
     }
     write_zip(platform, {**files, "platform-app.json": (json.dumps(manifest, indent=2) + "\n").encode()})
     (output / "SHA256SUMS").write_text("".join(

@@ -7,9 +7,10 @@
 import httpx
 
 from app.config import settings
-from app.core.exceptions import DatabaseError
+from app.core.exceptions import DatabaseError, QueryValidationError
 from app.core.logger import logger
 from app.utils import sql_helper
+from app.utils.sql_contract import assert_app_write, assert_read_query
 
 
 # --------------------------------------------------------------------
@@ -61,13 +62,14 @@ async def close_client() -> None:
 
 async def base_query_app_schema(sql: str, limit: int = 100) -> dict:
     """API-Q1: 查询应用 schema 内的表（datasourceId + schema 限定）"""
+    assert_read_query(sql, backslash_escapes=sql_helper.BACKSLASH_ESCAPES)
     r = await _get_client().post(
         settings.BASE_QUERY_URL,
         json={
             "datasourceId": settings.APP_DATASOURCE_ID,
             "schema": settings.APP_SCHEMA,
             "sql": sql,
-            "limit": limit,
+            "limit": max(1, min(1000, int(limit))),
         },
     )
     return r.json()
@@ -75,6 +77,7 @@ async def base_query_app_schema(sql: str, limit: int = 100) -> dict:
 
 async def base_execute_app_schema(sql: str) -> dict:
     """API-Q2: 写操作（INSERT/UPDATE/DELETE）到应用 schema"""
+    assert_app_write(sql, backslash_escapes=sql_helper.BACKSLASH_ESCAPES)
     # 身份头 x-app-id / x-app-level 由基座 venv sitecustomize.py 自动注入，应用禁止手动设置
     # 本地开发（非基座环境）时 sitecustomize.py 不存在，通过 INJECT_IDENTITY_HEADERS 开关手动注入
     headers = (
@@ -96,6 +99,7 @@ async def base_execute_app_schema(sql: str) -> dict:
 
 async def base_query_business(sql: str, limit: int = 100) -> dict:
     """API-Q1: 查询业务库（只读，按业务库组名 datasourceName）"""
+    assert_read_query(sql, backslash_escapes=sql_helper.BACKSLASH_ESCAPES)
     if not settings.BUSINESS_DATASOURCE_NAME:
         raise RuntimeError("未注入 BUSINESS_DATASOURCE_NAME，请创建应用时指定业务数据库")
     r = await _get_client().post(
@@ -103,7 +107,7 @@ async def base_query_business(sql: str, limit: int = 100) -> dict:
         json={
             "datasourceName": settings.BUSINESS_DATASOURCE_NAME,
             "sql": sql,
-            "limit": limit,
+            "limit": max(1, min(1000, int(limit))),
         },
     )
     return r.json()
@@ -136,6 +140,8 @@ async def query_app_schema(sql: str, limit: int = 100) -> list[dict]:
     """查询应用 schema 内数据，返回 rows 列表。"""
     try:
         resp = await base_query_app_schema(sql, limit)
+    except QueryValidationError:
+        raise
     except Exception as exc:
         raise DatabaseError(f"基座 API 请求失败：{exc}")
     if resp.get("code") != 0:
@@ -147,6 +153,8 @@ async def execute_app_schema(sql: str) -> int:
     """写操作（INSERT/UPDATE/DELETE），返回 affectedRows。"""
     try:
         resp = await base_execute_app_schema(sql)
+    except QueryValidationError:
+        raise
     except Exception as exc:
         raise DatabaseError(f"基座 API 请求失败：{exc}")
     if resp.get("code") != 0:
@@ -158,6 +166,8 @@ async def query_business(sql: str, limit: int = 100) -> list[dict]:
     """查询业务库（只读），返回 rows 列表。"""
     try:
         resp = await base_query_business(sql, limit)
+    except QueryValidationError:
+        raise
     except Exception as exc:
         raise DatabaseError(f"基座 API 请求失败：{exc}")
     if resp.get("code") != 0:

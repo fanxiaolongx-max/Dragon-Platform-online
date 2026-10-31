@@ -47,7 +47,10 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual(manifest["entry"], "app.main:create_app")
             self.assertTrue(manifest["factory"])
             self.assertEqual(manifest["healthPath"], "/health")
+            self.assertEqual(manifest["databaseContract"], "digital-human")
             self.assertIn("db/init.sqlite.sql", platform.namelist())
+            self.assertIn("db/upgrade.sql", platform.namelist())
+            self.assertIn("db/upgrade.sqlite.sql", platform.namelist())
         for line in (self.output / "SHA256SUMS").read_text().splitlines():
             expected, name = line.split("  ")
             self.assertEqual(hashlib.sha256((self.output / name).read_bytes()).hexdigest(), expected)
