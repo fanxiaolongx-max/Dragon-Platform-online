@@ -21,19 +21,42 @@
   const IDENTITY='你是「Dragon Claw（龙爪）」，NetCare 运营数字人平台内置的 AI 助理（Dragon Claw Online Beta），服务于 AiOps-Report 运营报告工作台。请始终以 Dragon Claw 的身份和口吻回答：专业、简洁、结论先行，熟悉网络运营场景，回答使用 Markdown。';
   const MAX_STEPS=6, MAX_ACTIONS=3, OBS_BUDGET=14000;
 
-  /* ---- 收起 / 展开 / 宽度（localStorage 持久化）---- */
-  let st={}; try{ st=JSON.parse(localStorage.getItem('api_test_aibar')||'{}'); }catch(e){}
-  const MINW=360, MAXW=Math.round(window.innerWidth*0.92), MINH=420;
+  /* ---- 浮窗几何：所有入口共用可见视口边界，旧位置也须重新校正 ---- */
+  let st={}; try{ const saved=JSON.parse(localStorage.getItem('api_test_aibar')||'{}'); if(saved && typeof saved==='object' && !Array.isArray(saved)) st=saved; }catch(e){}
+  const initiallyOpen=st.open===true;
+  const number=(value,fallback)=>typeof value==='number' && Number.isFinite(value)?value:fallback;
+  const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
+  function viewport(){
+    const v=window.visualViewport;
+    const width=v?v.width:document.documentElement.clientWidth, height=v?v.height:window.innerHeight;
+    const gap=Math.min(12,width/8,height/8);
+    return {left:(v?v.offsetLeft:0)+gap,top:(v?v.offsetTop:0)+gap,width:Math.max(1,width-gap*2),height:Math.max(1,height-gap*2)};
+  }
+  let geometry;
+  function fit(next={}){
+    const v=viewport(), old=geometry||{};
+    const defaultW=Math.min(520,Math.max(360,v.width/3));
+    const w=clamp(number(next.w,number(old.w,number(st.w,defaultW))),Math.min(360,v.width),v.width);
+    const h=clamp(number(next.h,number(old.h,number(st.h,v.height))),Math.min(420,v.height),v.height);
+    const x=clamp(number(next.x,number(old.x,number(st.x,v.left+v.width-w))),v.left,v.left+v.width-w);
+    const y=clamp(number(next.y,number(old.y,number(st.y,v.top))),v.top,v.top+v.height-h);
+    geometry={x,y,w,h};
+    bar.classList.toggle('compact',w<440);
+    Object.assign(bar.style,{left:x+'px',top:y+'px',right:'auto',width:w+'px',height:h+'px'});
+    bar.scrollLeft=0; bar.scrollTop=0;
+    syncRz();
+  }
   function persist(){
     st.open=!bar.classList.contains('collapsed');
-    if(st.open){  // 仅在可见时读取几何参数；收起时 display:none → offset 全为 0，会覆盖正确值
-      st.w=bar.offsetWidth; st.h=bar.offsetHeight; st.x=bar.offsetLeft; st.y=bar.offsetTop;
-    }
+    if(geometry) Object.assign(st,geometry);
     st.agent=agentSw.checked;
     try{ localStorage.setItem('api_test_aibar', JSON.stringify(st)); }catch(e){}
   }
-  function place(x,y){ bar.style.left=x+'px'; bar.style.top=y+'px'; bar.style.right='auto'; syncRz(); }
-  function syncRz(){ rz.style.left=(bar.offsetLeft-8)+'px'; rz.style.top=bar.offsetTop+'px'; rz.style.height=bar.offsetHeight+'px'; rz.style.right=''; }
+  function syncRz(){
+    if(!geometry) return;
+    // 手柄位于窗体左边缘内侧，不在可见区域之外另留拖动热区。
+    Object.assign(rz.style,{left:geometry.x+'px',top:geometry.y+'px',height:geometry.h+'px',right:''});
+  }
   const wrap=$('#aiBarFrameWrap');
   function ensureFrame(){
     if(onSite && hasClient && !frame.src){
@@ -54,7 +77,7 @@
     frame.style.width=(100/r)+'%';
     frame.style.height=(100/r)+'%';
     frame.style.transform='scale('+r+')';
-    persist();
+    fit(); persist();
   }
   if(st.zoom && ['50','70','100'].indexOf(String(st.zoom))>-1) frameZoomSel.value=String(st.zoom);
   if(st.agent===false) agentSw.checked=false;
@@ -65,15 +88,17 @@
     bar.classList.toggle('collapsed', !v);
     document.body.classList.toggle('aibar-open', v);
     rz.style.display = v ? '' : 'none';
-    if(v){ syncRz(); ensureFrame(); qInp.focus(); }
+    if(v){ fit(); ensureFrame(); qInp.focus({preventScroll:true}); }
     persist();
   }
-  const dW=Math.max(MINW, Math.min(520, Math.round(window.innerWidth/3)));
-  place(st.x!==undefined ? Math.min(st.x, window.innerWidth-120) : window.innerWidth-dW-12, st.y!==undefined ? Math.min(st.y, window.innerHeight-120) : 12);
-  bar.style.width=Math.max(MINW, Math.min(MAXW, st.w||dW))+'px';
-  bar.style.height=Math.max(MINH, Math.min(window.innerHeight-8, st.h||window.innerHeight-24))+'px';
-  syncRz();
-  setOpen(st.open===undefined ? false : !!st.open);   // 默认收起，点右下角按钮或左侧「AI 问答」菜单展开
+  fit();
+  setOpen(initiallyOpen);   // 初次使用默认收起；打开时再次按当前视口校正。
+  const refit=()=>{ fit(); persist(); };
+  window.addEventListener('resize',refit);
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize',refit);
+    window.visualViewport.addEventListener('scroll',refit);
+  }
   fab.onclick=()=>setOpen(bar.classList.contains('collapsed'));
   $('#aiBarClose').onclick=()=>setOpen(false);
   document.addEventListener('keydown', e=>{
@@ -84,29 +109,42 @@
   });
   function drag(e, onMove){
     e.preventDefault();
-    const move=ev=>onMove(ev), up=()=>{ persist(); window.removeEventListener('mousemove',move); window.removeEventListener('mouseup',up); document.body.style.userSelect=''; };
+    const handle=e.currentTarget, previous=document.body.style.userSelect;
+    handle.setPointerCapture(e.pointerId);
     document.body.style.userSelect='none';
-    window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+    const move=ev=>{ if(ev.pointerId===e.pointerId) onMove(ev); };
+    const up=()=>{
+      persist(); document.body.style.userSelect=previous;
+      handle.removeEventListener('pointermove',move);
+      handle.removeEventListener('pointerup',up); handle.removeEventListener('pointercancel',up);
+      handle.removeEventListener('lostpointercapture',up); window.removeEventListener('blur',up);
+      if(handle.hasPointerCapture(e.pointerId)) handle.releasePointerCapture(e.pointerId);
+    };
+    handle.addEventListener('pointermove',move); handle.addEventListener('pointerup',up);
+    handle.addEventListener('pointercancel',up); handle.addEventListener('lostpointercapture',up);
+    window.addEventListener('blur',up);
   }
-  rz.addEventListener('mousedown', e=>{
+  rz.addEventListener('pointerdown', e=>{
     if(e.button!==0) return;
-    const sx=e.clientX, ow=bar.offsetWidth;
-    drag(e, ev=>{ bar.style.width=Math.max(MINW, Math.min(MAXW, ow+ev.clientX-sx))+'px'; syncRz(); });
+    const sx=e.clientX, {x,w}=geometry, right=x+w;
+    drag(e,ev=>{
+      const v=viewport(), left=clamp(x+ev.clientX-sx,v.left,right-Math.min(360,v.width));
+      fit({x:left,w:right-left});
+    });
   });
-  /* 标题栏拖动移动窗口（跳过按钮） */
-  bar.querySelector('.aibar-h').addEventListener('mousedown', e=>{
+  /* 标题栏拖动：四个边缘始终留在可见视口内。 */
+  bar.querySelector('.aibar-h').addEventListener('pointerdown', e=>{
     if(e.button!==0 || e.target.closest('button')) return;
-    const sx=e.clientX, sy=e.clientY, ox=bar.offsetLeft, oy=bar.offsetTop;
-    drag(e, ev=>place(Math.max(-bar.offsetWidth+80, Math.min(window.innerWidth-80, ox+ev.clientX-sx)), Math.max(0, Math.min(window.innerHeight-40, oy+ev.clientY-sy))));
+    const sx=e.clientX, sy=e.clientY, {x,y}=geometry;
+    drag(e,ev=>fit({x:x+ev.clientX-sx,y:y+ev.clientY-sy}));
   });
-  /* 右下角拖动调整大小 */
-  $('#aiBarBr').addEventListener('mousedown', e=>{
+  $('#aiBarBr').addEventListener('pointerdown', e=>{
     if(e.button!==0) return;
     e.stopPropagation();
-    const sx=e.clientX, sy=e.clientY, ow=bar.offsetWidth, oh=bar.offsetHeight;
-    drag(e, ev=>{
-      bar.style.width=Math.max(MINW, Math.min(window.innerWidth-bar.offsetLeft, ow+ev.clientX-sx))+'px';
-      bar.style.height=Math.max(MINH, Math.min(window.innerHeight-bar.offsetTop, oh+ev.clientY-sy))+'px'; syncRz();
+    const sx=e.clientX, sy=e.clientY, {x,y,w,h}=geometry;
+    drag(e,ev=>{
+      const v=viewport();
+      fit({w:Math.min(v.left+v.width-x,w+ev.clientX-sx),h:Math.min(v.top+v.height-y,h+ev.clientY-sy)});
     });
   });
   window.__openAiBar=()=>setOpen(true);
