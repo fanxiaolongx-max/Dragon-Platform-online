@@ -13,7 +13,7 @@
 .aibar,.aibar *{box-sizing:border-box}
 :where(.aibar) button{appearance:none;font:inherit;background:transparent;border:0;padding:0;color:inherit;box-shadow:none}
 .aibar button:focus-visible,.aibar select:focus-visible{outline:2px solid var(--dc-accent);outline-offset:2px}
-.aibar.collapsed{display:none}
+.aibar.collapsed{visibility:hidden!important;pointer-events:none!important;opacity:0!important;z-index:-1!important;overflow:visible!important;animation:none!important}
 @keyframes aibarIn{from{opacity:0}to{opacity:1}}
 .aibar:focus-within{border-color:rgba(100,255,218,.32);box-shadow:0 0 0 1px rgba(100,255,218,.14),0 24px 64px rgba(2,6,23,.5)}
 .aibar::before{content:'';position:absolute;inset:-30% -20% auto;height:60%;z-index:-1;pointer-events:none;
@@ -179,15 +179,16 @@
 .aibar-frame-hint[hidden]{display:none}
 .aibar .dct-h{width:100%;text-align:left;font:inherit;color:inherit}
 .aibar .dct-h:focus-visible{outline-offset:-3px}
-#aiBarFrameWrap{display:none;border-top:0}
-#aiBarFrameWrap.open{display:block;position:relative;overflow:hidden;flex:1 1 0;min-height:0;border-top:1px solid var(--dc-line)}
-#aiBarFrameWrap.open iframe{position:absolute;top:0;left:0;border:0;display:block;background:#fff;transform-origin:top left}
-/* 隐身展开：脱离浮窗布局流并移到屏幕外，对用户不可见但 iframe 内输入框可被代码检测到（首次发送时使用） */
-#aiBarFrameWrap.stealth{display:block;position:fixed;left:-99999px;top:0;width:360px;height:320px;z-index:-1;opacity:0;overflow:hidden}
-#aiBarFrameWrap.stealth iframe{position:absolute;top:0;left:0;border:0;display:block;background:#fff;transform-origin:top left}
-/* 预热：页面启动时让 iframe 离屏可见，提前完成加载与布局，避免首次点"展开"看到空白（"没反应"） */
-#aiBarFrameWrap.preheat{display:block;position:fixed;left:-99999px;top:0;width:360px;height:320px;z-index:-1;opacity:0;overflow:hidden;pointer-events:none}
-#aiBarFrameWrap.preheat iframe{position:absolute;top:0;left:0;border:0;display:block;background:#fff;transform-origin:top left}
+#aiBarFrameWrap{display:block;visibility:visible;position:fixed;left:0;top:0;width:360px;height:320px;z-index:-1;opacity:0;pointer-events:none;overflow:hidden;border-top:0}
+#aiBarFrameWrap iframe{position:absolute;top:0;left:0;border:0;display:block;background:#fff;transform-origin:top left;pointer-events:none}
+.aibar:not(.collapsed) #aiBarFrameWrap.open{position:relative;left:auto;top:auto;width:auto;height:auto;z-index:auto;opacity:1;pointer-events:auto;flex:1 1 0;min-height:0;border-top:1px solid var(--dc-line)}
+.aibar:not(.collapsed) #aiBarFrameWrap.open iframe{pointer-events:auto}
+/* 隐身展开：脱离浮窗布局流并置于视口底层透明区，对用户不可见但 iframe 内输入框始终有真实布局与 clientRects（首次发送及浮窗收起时使用） */
+#aiBarFrameWrap.stealth{display:block;visibility:visible;position:fixed;left:0;top:0;width:360px;height:320px;z-index:-1;opacity:0;pointer-events:none;overflow:hidden}
+#aiBarFrameWrap.stealth iframe{position:absolute;top:0;left:0;border:0;display:block;background:#fff;transform-origin:top left;pointer-events:none}
+/* 预热：页面启动时让 iframe 保持透明可见布局，提前完成加载与渲染，避免首次提问或点"展开"时未就绪 */
+#aiBarFrameWrap.preheat{display:block;visibility:visible;position:fixed;left:0;top:0;width:360px;height:320px;z-index:-1;opacity:0;overflow:hidden;pointer-events:none}
+#aiBarFrameWrap.preheat iframe{position:absolute;top:0;left:0;border:0;display:block;background:#fff;transform-origin:top left;pointer-events:none}
 .aibar-br{position:absolute;right:2px;bottom:2px;width:14px;height:14px;cursor:nwse-resize;touch-action:none;z-index:5;opacity:.35;color:var(--dc-muted)}
 .aibar-br::before{content:'';position:absolute;right:3px;bottom:3px;width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;border-radius:0 0 3px 0}
 .aibar-br:hover{opacity:1;color:var(--dc-accent)}

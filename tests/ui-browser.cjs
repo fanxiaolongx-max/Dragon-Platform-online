@@ -132,6 +132,20 @@ async function workspace(page, origin, pathname, sandbox = false) {
   }
 }
 async function assistantFeedback(page){
+  const zOrder=await page.evaluate(()=>({
+    toggle:Number(getComputedStyle(document.querySelector('.air-chrome-toggle')).zIndex)||0,
+    bar:Number(getComputedStyle(document.getElementById('aiBar')).zIndex)||0,
+  }));
+  assert(zOrder.toggle<zOrder.bar,`Top bar collapse toggle z-index (${zOrder.toggle}) must stay below #aiBar (${zOrder.bar})`);
+  // Cell chat must be able to establish the first session even while #aiBar is collapsed.
+  await page.locator('#aiBarClose').click();
+  const cellFirstReply=await page.evaluate(async()=>{
+    window.ADCChat.configured=false;
+    window.ADCChat.ask=async(_q,options)=>{window.ADCChat.configured=true;options.onUpdate('格子首问成功');};
+    return window.DragonClaw.conversation('air',true,({ask})=>ask('月报格子首问'));
+  });
+  assert.equal(cellFirstReply,'格子首问成功');
+  await page.evaluate(()=>window.DragonClaw.open());
   await page.evaluate(()=>{
     document.getElementById('aiBarAgent').checked=false;
     window.ADCChat.configured=false;

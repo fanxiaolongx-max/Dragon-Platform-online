@@ -59,13 +59,17 @@
   }
   const wrap=$('#aiBarFrameWrap');
   function ensureFrame(){
-    if(onSite && hasClient && !frame.src){
-      window.DC_SITE.loadFrame(frame);
-      /* 预热：容器 display:none 时浏览器延迟渲染 iframe，首次点"展开"才真正布局 → 短暂空白像"没反应"。
-         离屏可见一下，等 iframe load 后收回，之后点"展开"即可即时显示。 */
-      if(!wrap.classList.contains('open')){
-        wrap.classList.add('preheat');
-        frame.addEventListener('load', ()=>{ wrap.classList.remove('preheat'); }, {once:true});
+    if(onSite && hasClient){
+      if(!frame.src){
+        window.DC_SITE.loadFrame(frame);
+        /* 预热：容器折叠时保持透明可见布局，等 iframe 加载并挂载输入框后再移除标记 */
+        if(!wrap.classList.contains('open')){
+          wrap.classList.add('preheat');
+          frame.addEventListener('load', ()=>{ wrap.classList.remove('preheat'); }, {once:true});
+        }
+      }
+      if(!window.ADCChat.configured && !window.ADCChat.capturing && !window.ADCChat.busy){
+        try{ window.ADCChat.autoCapture?.(); }catch(e){}
       }
     }
   }
@@ -456,7 +460,7 @@
 
   /* ================= 发送主流程 ================= */
   const wrapEl=wrap;
-  function frameVisible(){ return wrapEl.classList.contains('open'); }
+  function frameVisible(){ return !bar.classList.contains('collapsed') && wrapEl.classList.contains('open'); }
   const frameToggle=$('#aiBarFrameToggle');
   const frameHint=document.createElement('div');
   frameHint.id='aiBarFrameHint'; frameHint.className='aibar-frame-hint';
@@ -483,18 +487,25 @@
     frameToggle.setAttribute('aria-expanded',String(v)); frameNotice('');
     fit();
   }
-  /* 检测内嵌原页面是否已出现可见且空的聊天输入框（与 adc-chat findComposer 同口径） */
+  /* 检测内嵌原页面是否已出现可见且空的聊天输入框（与 adc-chat findComposer 同口径，递归扫描子 frame） */
   function frameHasComposer(){
-    try{
-      const w=frame.contentWindow, doc=frame.contentDocument; if(!w||!doc) return false;
-      for(const el of doc.querySelectorAll('textarea, [contenteditable="true"], [role="textbox"]')){
-        if(el.disabled||el.readOnly||el.getAttribute('aria-disabled')==='true') continue;
-        const cs=w.getComputedStyle(el);
-        if(cs.display==='none'||cs.visibility==='hidden'||!el.getClientRects().length||el.closest('[aria-hidden="true"]')) continue;
-        return true;
-      }
-    }catch(e){}
-    return false;
+    const seen=new Set();
+    function scan(w){
+      if(!w || seen.has(w)) return false;
+      seen.add(w);
+      try{
+        const doc=w.document; if(!doc) return false;
+        for(const el of doc.querySelectorAll('textarea, [contenteditable="true"], [role="textbox"]')){
+          if(el.disabled||el.readOnly||el.getAttribute('aria-disabled')==='true') continue;
+          const cs=w.getComputedStyle(el);
+          if(cs.display==='none'||cs.visibility==='hidden'||!el.getClientRects().length||el.closest('[aria-hidden="true"]')) continue;
+          return true;
+        }
+        for(let i=0;i<(w.frames?.length||0);i++){ if(scan(w.frames[i])) return true; }
+      }catch(e){}
+      return false;
+    }
+    return scan(frame.contentWindow);
   }
   async function buildPrompt(q){
     const agentOn=agentSw.checked;
@@ -516,22 +527,40 @@
     const C=window.ADCChat;
     const first=!C.configured;
     let stealthed=false;
-    qInp.setAttribute('aria-disabled','true');   // 临时把本栏输入框排除出「聊天输入框」候选，避免 findComposer 误选它
+    /* 临时把外层页面所有输入框排除出「聊天输入框」候选，避免 findComposer 误选月报格子或浮窗输入框 */
+    const muted=[];
+    for(const el of document.querySelectorAll('textarea, [contenteditable="true"], [role="textbox"]')){
+      if(el.getAttribute('aria-disabled')!=='true'){ el.setAttribute('aria-disabled','true'); muted.push(el); }
+    }
     try{
-      if(first && !frameVisible()){
-        /* 隐身展开：iframe 折叠时内部不布局、输入框无 clientRects 会被跳过；临时移到屏幕外，用户不可见但代码可检测到输入框 */
-        wrapEl.classList.add('stealth'); stealthed=true; lockFrame(true);
+      if(first){
         ensureFrame();
-        let ready=false;
-        for(let i=0;i<100;i++){ await new Promise(r=>setTimeout(r,100)); if(frameHasComposer()){ ready=true; break; } }
-        if(!ready) throw new Error('内嵌原页面未就绪：聊天输入框未出现，请展开「原 ADC 聊天页」后重试。');
+        if(!frameVisible()){
+          /* 隐身展开：确保浮窗收起或原页面折叠时 iframe 也有真实布局与 clientRects */
+          wrapEl.classList.add('stealth'); stealthed=true; lockFrame(true);
+        }
+        let ready=frameHasComposer();
+        for(let i=0;!ready && i<300;i++){
+          await new Promise(r=>setTimeout(r,100));
+          if(C.configured || frameHasComposer()){ ready=true; break; }
+        }
+        if(!ready && !C.configured){
+          setOpen(true);
+          if(stealthed){ wrapEl.classList.remove('stealth'); stealthed=false; lockFrame(false); }
+          setFrameVisible(true);
+          for(let i=0;i<50;i++){
+            await new Promise(r=>setTimeout(r,100));
+            if(C.configured || frameHasComposer()){ ready=true; break; }
+          }
+        }
+        if(!ready && !C.configured) throw new Error('内嵌原页面未就绪：聊天输入框未出现，请展开「原 ADC 聊天页」后重试。');
       }
       let latest='';
       await C.ask(prompt, { onUpdate:t=>{ latest=t||''; onUpdate&&onUpdate(latest); } });
       return latest;
     } finally {
       if(stealthed){ wrapEl.classList.remove('stealth'); lockFrame(false); }
-      qInp.removeAttribute('aria-disabled');
+      for(const el of muted) el.removeAttribute('aria-disabled');
     }
   }
   function conversation(owner, fresh, fn){
@@ -574,7 +603,7 @@
           if(!C.configured) msg.wait('首次提问，正在经原页面建立会话…');
           adcStatus(step?'正在分析工具结果…':'Dragon Claw 正在思考…','busy');
           let text;
-          try{ text=await ask(prompt, t=>msg.stream(streamView(t))); }
+          try{ text=await ask(prompt, t=>t ? msg.stream(streamView(t)) : msg.wait('会话已建立，Dragon Claw 正在思考…')); }
           catch(err){ msg.fail(stopRequested?'已停止。':'请求失败：'+err.message); throw err; }
           primed=true;
           const {visible, actions, errors}=parseReply(text);

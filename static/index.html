@@ -339,7 +339,8 @@ body.ai-report-page #aiBarFab{right:auto;left:18px}
         for (let i = 0; i < (w.frames?.length || 0); i++) scan(w.frames[i]);
       } catch { /* 不读取跨源 iframe。 */ }
     }
-    scan(window);
+    const adcFrame = document.getElementById("aiBarFrame");
+    scan(adcFrame?.contentWindow || window);
     const hinted = candidates.filter(({el}) => /提问|请输入|发送消息|输入问题|输入消息|message|ask|prompt/i
       .test([el.getAttribute("placeholder"), el.getAttribute("aria-label"),
         el.getAttribute("data-placeholder")].filter(Boolean).join(" ")));
@@ -412,7 +413,11 @@ body.ai-report-page #aiBarFab{right:auto;left:18px}
                 }
                 return;
               }
-              if (body.message !== question) { void response.body?.cancel().catch(() => {}); return; }
+              if (typeof body.message !== "string" || !body.message.trim() ||
+                  (body.message !== question && body.message.trim() !== question.trim())) {
+                void response.body?.cancel().catch(() => {});
+                return;
+              }
               validateResponseUrl(response, PATH);
               if (!response.ok || !/text\/event-stream/i.test(response.headers.get("content-type") || "")) {
                 throw new Error("网页提问没有返回 SSE（HTTP " + response.status + "），请检查页面错误或登录状态。");
@@ -421,6 +426,7 @@ body.ai-report-page #aiBarFab{right:auto;left:18px}
                 pageHeaders: Object.fromEntries(PAGE_KEYS.map(k => [k, request.headers.get(k) ??
                   (k === "x-gde-src-page" ? SOURCE_PAGE : "")])),
                 referrer: request.referrer && request.referrer !== "about:client" ? request.referrer : REFERRER });
+              options.onUpdate?.("");
               settled = true;
               restore();
               resolveResponse(response);
