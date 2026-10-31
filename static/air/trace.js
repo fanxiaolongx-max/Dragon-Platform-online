@@ -15,7 +15,7 @@
     }
     // An AI request: in developer mode the server returns _trace beside the answer (also on errors), kept as one group.
     async function post(cellId,label,path,body){
-        const options={signal:window.AiReportTasks?.signal(cellId)};
+        const options={signal:window.AiReportTasks?.signal(cellId),onState:stage=>{if(!options.signal?.aborted)window.dispatchEvent(new CustomEvent('aiops-task-stage',{detail:{cellId,stage,label}}));}};
         if(!enabled)return API.post(path,body,options);
         const started=Date.now();
         try{

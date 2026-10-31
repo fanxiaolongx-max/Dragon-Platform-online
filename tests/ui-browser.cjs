@@ -200,6 +200,44 @@ async function stopFlow(page,origin){
   assert(sandbox,'Stopping computation must remove its sandbox and reject the result');
   console.log('PASS: active and queued cell cancellation, ADC stop, ignored late responses, no retries, and fresh generation after stop.');
 }
+async function concurrencyFlow(page,origin){
+  nativeEnvironment=false;monthMode=false;
+  await page.goto(origin+'/');await page.locator('#airReport .kit-nav-item').first().waitFor();
+  if(await page.locator('#aiBar').isVisible())await page.locator('#aiBarClose').click();
+  const ids=await page.evaluate(()=>{
+    const cells=AiReportApp.state.doc.chapters.flatMap(c=>c.cells).filter(c=>c.prompt&&!c.recipe),ids=cells.slice(0,8).map(c=>c.id);
+    window.__requests=0;window.__active=0;window.__maxActive=0;window.__release=[];
+    ADCChat.ask=async(prompt,options)=>{
+      const marker=prompt.match(/TEST_CELL_\d+/)?.[0];window.__requests++;window.__active++;window.__maxActive=Math.max(window.__maxActive,window.__active);
+      await new Promise(resolve=>window.__release.push(()=>{window.__active--;options.onUpdate(JSON.stringify({type:'recipe',reply:'ok',recipe:{summary:{zh:'测试'},sources:[],compute:'function compute(){return {marker:'+JSON.stringify(marker)+'};}',render:'function render(result,kit){return kit.text(result.marker);}',narrative:null}}));resolve();}));
+    };
+    ids.forEach((id,i)=>{const c=AiReportApp.find(id).cell;c.prompt='只显示标记 TEST_CELL_'+i+'，不需要标题';c.chat=[{role:'ai',kind:'prompt',text:c.prompt}];});
+    AiReportApp.render();window.__jobs=ids.map(id=>AiReportApp.tryPrompt(id));
+    return [...ids,cells[8].id];
+  });
+  await page.waitForFunction(()=>window.__requests===1);
+  await page.locator('.air-cell-tools [data-cell-chat="'+ids[8]+'"]').click();
+  await page.locator('#airChat .air-composer textarea').fill('未发送的消息草稿');
+  await page.locator('#airChat [data-edit-prompt]').click();
+  await page.locator('#airChat [data-prompt-draft]').fill('尚未保存的提示词编辑');
+  for(let i=0;i<8;i++){
+    await page.waitForFunction(n=>window.__requests===n,i+1);
+    await page.evaluate(()=>window.__release.shift()());
+  }
+  await page.evaluate(()=>Promise.all(window.__jobs));
+  const result=await page.evaluate(ids=>({requests:window.__requests,max:window.__maxActive,values:ids.slice(0,8).map(id=>AiReportApp.find(id).cell.output?.result?.marker),selected:AiReportApp.state.selected}),ids);
+  assert.equal(result.requests,8);assert.equal(result.max,1,'One ADC lane serializes eight independent jobs');
+  assert.deepEqual(result.values,Array.from({length:8},(_,i)=>'TEST_CELL_'+i));
+  assert.equal(result.selected,ids[8],'Another cell completion cannot change selection');
+  await page.locator('.air-cell-tools [data-cell-chat="'+ids[0]+'"]').click();
+  await page.locator('.air-cell-tools [data-cell-chat="'+ids[8]+'"]').click();
+  assert.equal(await page.locator('#airChat .air-composer textarea').inputValue(),'未发送的消息草稿');
+  assert.equal(await page.locator('#airChat [data-prompt-draft]').textContent(),'尚未保存的提示词编辑');
+  await page.evaluate(()=>{AiReportApp.state.saveKey='different-report';AiReportApp.render();});
+  assert.equal(await page.locator('#airChat .air-composer textarea').inputValue(),'','Drafts cannot cross report boundaries');
+  assert.equal(await page.locator('#airChat [data-prompt-draft]').count(),0);
+  console.log('PASS: eight cell jobs serialize and retain separate results; switching away/back preserves selection, message draft and prompt edits.');
+}
 let browser;
 async function contained(page, selector = '#aiBar') {
   await page.waitForFunction(selector => {
@@ -438,6 +476,7 @@ async function assistantFeedback(page){
   await monthFlow(page,origin);
   await environmentFlow(page,origin);
   await stopFlow(page,origin);
+  await concurrencyFlow(page,origin);
   assert.deepEqual(errors, []);
   console.log('PASS: restored geometry, four-edge dragging, both resize handles, dark buttons, iframe zoom, viewport resizing, visual viewport zoom, modal state/focus, root and prefixed API paths, sandboxed embedding.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => { await browser?.close(); server.close(); });

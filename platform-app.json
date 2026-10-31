@@ -1,6 +1,6 @@
 {
   "name": "AiOps-Report",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "entry": "app.main:create_app",
   "factory": true,
   "interface": "asgi",

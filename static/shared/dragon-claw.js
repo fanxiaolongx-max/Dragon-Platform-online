@@ -566,12 +566,13 @@
       for(const el of muted) el.removeAttribute('aria-disabled');
     }
   }
-  function conversation(owner, fresh, fn, {signal}={}){
+  function conversation(owner, fresh, fn, {signal,onState}={}){
+    onState?.('queued');
     const run=async()=>{
       signal?.throwIfAborted();
       const C=window.ADCChat;
       if(!(onSite && hasClient)) throw new Error('当前页面无法连接 ADC 对话（需部署到数字人云端同源地址）');
-      laneBusy=owner; updateButtons();
+      onState?.('running');laneBusy=owner; updateButtons();
       const abort=()=>{try{C.stop();}catch(_){}laneOwner=null;};
       signal?.addEventListener('abort',abort,{once:true});
       try{

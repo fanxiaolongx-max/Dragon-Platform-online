@@ -42,7 +42,7 @@
     };
     const widgetLookup=(cellId,widgetId)=>find(cellId)?.cell?.output?.widgets?.find(item=>item.id===widgetId);
     const imageLibrary=AiReportImageLibrary.create({API,t,find,render,aiStep,actions:record=>withUndo(record,IMAGE_ACTIONS())});
-    const chat=AiReportChat.create({root:chatRoot,t,lang:()=>state.lang,find,send:(cellId,text)=>converse(cellId,text),retry:(cellId,index)=>retryMessage(cellId,index),makePrompt:cellId=>makePrompt(cellId),tryPrompt:cellId=>tryPrompt(cellId),revert:cellId=>revertPrompt(cellId),savePrompt:(cellId,text)=>savePromptEdit(cellId,text),close:()=>select(null),pickImage:(cellId,url,index)=>pickImage(cellId,url,index),imagePage:imageLibrary.page,removeImage:imageLibrary.remove,imageDeletion:imageLibrary.decide});
+    const chat=AiReportChat.create({root:chatRoot,scope:()=>state.saveKey,t,lang:()=>state.lang,find,send:(cellId,text)=>converse(cellId,text),retry:(cellId,index)=>retryMessage(cellId,index),makePrompt:cellId=>makePrompt(cellId),tryPrompt:cellId=>tryPrompt(cellId),revert:cellId=>revertPrompt(cellId),savePrompt:(cellId,text)=>savePromptEdit(cellId,text),close:()=>select(null),pickImage:(cellId,url,index)=>pickImage(cellId,url,index),imagePage:imageLibrary.page,removeImage:imageLibrary.remove,imageDeletion:imageLibrary.decide});
 
     function staleCells(){return M.cells(state.doc).filter(cell=>AiReportRunner.needsNarrative(cell,state.doc.reportMonth));}
     // A cell whose finished content differs from what was last shown gets the splash transition (old → new).
@@ -1020,13 +1020,13 @@
 
     async function loadReports(){try{state.reports=await API.get('/api/ai-report/documents');return true;}catch(error){status(error.message);return false;}}
     async function confirmDiscard(){if(state.saving){status(t('正在保存，请稍候…','Saving, please wait…'));return false;}return !dirty()||AppDialog.confirm(t('当前月报有未保存的修改，确定放弃吗？','This report has unsaved changes. Discard them?'),{tone:'danger',confirmText:t('放弃修改','Discard')});}
-    async function openReport(id){if(!await confirmDiscard())return;state.doc=M.normalize(await API.get('/api/ai-report/documents/'+encodeURIComponent(id)));state.saved=snapshot();state.undo=[];state.selected=null;render();}
+    async function openReport(id){if(!await confirmDiscard())return;state.doc=M.normalize(await API.get('/api/ai-report/documents/'+encodeURIComponent(id)));state.saveKey='report-'+id;state.saved=snapshot();state.undo=[];state.selected=null;render();}
     async function newReport(month=previousMonth()){
         if(!await confirmDiscard()){toolbar();return;}
         if(!await loadReports()){toolbar();return status(t('无法确认该月份是否已有月报，请稍后重试','Unable to check existing reports; please retry'));}
         const existing=state.reports.find(item=>item.reportMonth===month&&item.reportKind!=='copy'&&item.reportKind!=='history'&&item.isDefault!==false);
         if(existing){
-            state.doc=M.normalize(await API.get('/api/ai-report/documents/'+encodeURIComponent(existing.id)));state.saved=snapshot();state.undo=[];state.selected=null;render();
+            state.doc=M.normalize(await API.get('/api/ai-report/documents/'+encodeURIComponent(existing.id)));state.saveKey='report-'+existing.id;state.saved=snapshot();state.undo=[];state.selected=null;render();
             return status(t('已打开该月份已有的月报','Opened the existing report for this month'));
         }
         state.doc=M.normalize(await API.get('/api/ai-report/template?month='+month));state.saveKey=M.uid('save');state.saved='';state.undo=[];state.selected=null;render();
@@ -1077,6 +1077,11 @@
             event.source.postMessage({type:'aiops-environment-preflight-result',id:event.data.id,allowed,dirty:dirty()},'*');
         }
         if(event.data?.type==='aiops-environment-switched')location.reload();
+    });
+    window.addEventListener('aiops-task-stage',event=>{
+        const {cellId,stage,label}=event.detail||{};
+        if(!state.busy.has(cellId))return;
+        state.busy.set(cellId,stage==='queued'?t('排队等待 AI 通道…','Queued for AI channel…'):label);render();
     });
     function stopGeneration(){
         AiReportTasks.stop();

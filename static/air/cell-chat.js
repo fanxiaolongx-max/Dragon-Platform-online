@@ -7,8 +7,8 @@
     const multiline=value=>esc(value).replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/^#{1,6}\s+/gm,'').replace(/\n/g,'<br>');
     const PAGE=10;
 
-    function create({root,t,lang,find,send,retry,makePrompt,tryPrompt,revert,savePrompt,close,pickImage=()=>{},imagePage=()=>{},removeImage=()=>{},imageDeletion=()=>{}}){
-        let cellId=null,editing=null,kind='cell';const starts=new Map(),openTraces=new Set();
+    function create({root,t,lang,find,send,retry,makePrompt,tryPrompt,revert,savePrompt,close,pickImage=()=>{},imagePage=()=>{},removeImage=()=>{},imageDeletion=()=>{},scope=()=>''}){
+        let cellId=null,editing=null,kind='cell';const starts=new Map(),openTraces=new Set(),drafts=new Map(),edits=new Map();let currentScope=scope();const key=id=>currentScope+'|'+id;
         const Trace=window.AiReportTrace;
         // Image chat: the current picture with the platform's base prompt (folded), and the fixed steps as buttons.
         function imageIntro(found){
@@ -104,7 +104,9 @@
             return `<div class="air-msg air-msg-${item.role}${item.kind==='note'?' air-msg-note':''}${pictures?' air-msg-pictures':''}" data-msg="${index}">${multiline(item.text)}${pictures}${choices}</div>`;
         }
         function render(id=cellId,{keepScroll=false}={}){
-            const opened=id!==cellId;if(opened)editing=null;cellId=id;const found=id&&find(id);
+            const input=root.querySelector('.air-composer textarea');if(cellId&&input)drafts.set(key(cellId),input.value);
+            if(editing)edits.set(key(editing.cellId),editing);
+            const nextScope=scope(),opened=id!==cellId||nextScope!==currentScope;currentScope=nextScope;if(opened)editing=edits.get(key(id))||null;cellId=id;const found=id&&find(id);
             if(!found){root.hidden=true;root.innerHTML='';return;}
             const {cell,chapter,busy}=found,report=found.kind!=='cell';kind=found.kind;
             if(opened||!starts.has(id))starts.set(id,initialStart(cell.chat));
@@ -119,6 +121,7 @@
                 <form class="air-chat-form"><div class="air-composer"><textarea rows="1" maxlength="6000" aria-label="${esc(t('消息','Message'))}" placeholder="${esc(kind==='image'?t('描述想要的图片，或说“大一点”“换回上一张”…','Describe the picture you want…'):kind==='field'?t('说说这段文字想怎么写，或问问能怎么写…','Describe how this text should read…'):kind==='chapter'?t('说说本章节格子要统一的样式…','Describe the style to unify in this chapter…'):report?t('说说要加、删、改哪条要求，或想要的风格…','Say which rule to add, remove or change, or the style you want…'):t('问问数据，或说说想要的内容…','Ask about the data or describe what you want…'))}" ${busy?'disabled':''}></textarea><div class="air-composer-bar"><small>${t('Enter 发送 · Shift+Enter 换行','Enter to send · Shift+Enter for a new line')}</small><button type="submit" class="air-send" disabled aria-label="${esc(t('发送','Send'))}" title="${esc(t('发送','Send'))}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div></div></form>`;
             const logNode=root.querySelector('.air-chat-log');
             logNode.scrollTop=keepScroll?logNode.scrollHeight-fromBottom:logNode.scrollHeight;
+            const composer=root.querySelector('.air-composer textarea');if(composer){composer.value=drafts.get(key(id))||'';fit(composer);}
             pullable(logNode);
         }
         function loadEarlier(){const start=starts.get(cellId)||0;if(!start)return;starts.set(cellId,Math.max(0,start-PAGE));render(cellId,{keepScroll:true});}
@@ -162,7 +165,7 @@
             const copy=event.target.closest('[data-copy-msg]');if(copy){copyMessage(copy);return;}
             const again=event.target.closest('[data-retry-msg]');if(again){if(!again.disabled)retry(cellId,Number(again.dataset.retryMsg));return;}
             if(event.target.closest('[data-edit-prompt]')){const cell=find(cellId)?.cell;editing={cellId,draft:cell?.prompt||''};render(cellId,{keepScroll:true});focusDraft();return;}
-            if(event.target.closest('[data-cancel-edit]')){editing=null;render(cellId,{keepScroll:true});return;}
+            if(event.target.closest('[data-cancel-edit]')){edits.delete(key(cellId));editing=null;render(cellId,{keepScroll:true});return;}
             if(event.target.closest('[data-save-prompt]'))return saveDraft();
             const remove=event.target.closest('[data-delete-image]');if(remove&&cellId){event.stopPropagation();removeImage(cellId,Number(remove.closest('[data-msg]').dataset.msg),remove.dataset.deleteImage);return;}
             const imagePager=event.target.closest('[data-image-page]');if(imagePager&&cellId){imagePage(cellId,Number(imagePager.closest('[data-msg]').dataset.msg),Number(imagePager.dataset.imagePage));return;}
@@ -191,14 +194,14 @@
             const label=button.textContent;button.textContent='✓ '+t('已复制','Copied');button.classList.add('is-copied');setTimeout(()=>{button.textContent=label;button.classList.remove('is-copied');},1400);
         }
         const focusDraft=()=>{const draft=root.querySelector('[data-prompt-draft]');if(!draft)return;draft.focus();const range=document.createRange();range.selectNodeContents(draft);range.collapse(false);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);};
-        function saveDraft(){const text=(editing?.draft||'').trim(),id=cellId;editing=null;if(!text){render(id,{keepScroll:true});return;}savePrompt(id,text);}
+        function saveDraft(){const text=(editing?.draft||'').trim(),id=cellId;edits.delete(key(id));editing=null;if(!text){render(id,{keepScroll:true});return;}savePrompt(id,text);}
         root.addEventListener('input',event=>{if(event.target.matches('[data-prompt-draft]')&&editing)editing.draft=event.target.innerText;});
         root.addEventListener('keydown',event=>{
             if(!event.target.matches('[data-prompt-draft]'))return;
             if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)){event.preventDefault();saveDraft();}
-            else if(event.key==='Escape'){event.preventDefault();event.stopPropagation();editing=null;render(cellId,{keepScroll:true});}
+            else if(event.key==='Escape'){event.preventDefault();event.stopPropagation();edits.delete(key(cellId));editing=null;render(cellId,{keepScroll:true});}
         });
-        root.addEventListener('submit',event=>{event.preventDefault();const input=root.querySelector('.air-composer textarea'),text=input.value.trim();if(text&&cellId){input.value='';fit(input);send(cellId,text);}});
+        root.addEventListener('submit',event=>{event.preventDefault();const input=root.querySelector('.air-composer textarea'),text=input.value.trim();if(text&&cellId){input.value='';drafts.delete(key(cellId));fit(input);send(cellId,text);}});
         root.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&event.keyCode!==229&&event.target.matches('.air-composer textarea')){event.preventDefault();root.querySelector('.air-chat-form').requestSubmit();}});
         root.addEventListener('click',event=>{if(event.target.closest('.air-composer')&&!event.target.closest('button'))root.querySelector('.air-composer textarea')?.focus();});
         // Undo animation: removed bubbles blur away bottom-up while particles scatter in a Gaussian spray, then their space

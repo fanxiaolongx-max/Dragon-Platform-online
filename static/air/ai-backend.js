@@ -15,7 +15,7 @@ const apiBase=()=>{ const p=location.pathname; return p.slice(0,p.lastIndexOf('/
 const fail=(status,message)=>Object.assign(new Error(message),{status});
 async function http(method, path, body, signal){
     signal?.throwIfAborted();
-    const response=await fetch(apiBase()+path,{method,signal,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+    let response;try{response=await fetch(apiBase()+path,{method,signal,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});}catch(error){if(error.name==='AbortError')throw error;throw fail(0,'应用接口连接中断：'+method+' '+path+'。未收到 HTTP 响应，请检查服务、代理连接或重新打开应用。');}
     let json;try{json=await response.json();}catch(_){throw fail(response.status,'服务器返回异常（HTTP '+response.status+'）');}
     if(json.code!==0)throw fail(json.code||response.status,json.message||('HTTP '+response.status));
     return json.data;
@@ -702,7 +702,7 @@ async function del(path){
     if(rel.startsWith('/documents/'))return http('DELETE','/air/documents/'+encodeURIComponent(decodeURIComponent(rel.slice(11))));
     throw fail(404,'接口不存在：'+rel);
 }
-async function post(path,body={}, {signal}={}){
+async function post(path,body={}, {signal,onState}={}){
     signal?.throwIfAborted();
     const {rel}=route(path);
     if(rel==='/documents')return http('POST','/air/documents',body);
@@ -716,7 +716,7 @@ async function post(path,body={}, {signal}={}){
         try{const reply=await handler(input,createClient(conv,signal));signal?.throwIfAborted();return debug&&reply&&typeof reply==='object'?{...reply,_trace:store}:reply;}
         catch(error){if(debug)error.body={_trace:store};throw error;}
         finally{traceStore=null;}
-    },{signal});
+    },{signal,onState});
 }
 window.API={get,post,delete:del};
 window.AiReportBackend={monthValues,resolveSql,TOOLS,createClient};
