@@ -15,10 +15,11 @@
     }
     // An AI request: in developer mode the server returns _trace beside the answer (also on errors), kept as one group.
     async function post(cellId,label,path,body){
-        if(!enabled)return API.post(path,body);
+        const options={signal:window.AiReportTasks?.signal(cellId)};
+        if(!enabled)return API.post(path,body,options);
         const started=Date.now();
         try{
-            const reply=await API.post(path,{...body,_debug:true});
+            const reply=await API.post(path,{...body,_debug:true},options);
             const steps=reply&&typeof reply==='object'?reply._trace:null;if(reply&&typeof reply==='object')delete reply._trace;
             add(cellId,{kind:'call',label,path,ms:Date.now()-started,steps:Array.isArray(steps)?steps:[],result:summarize(reply)});
             return reply;

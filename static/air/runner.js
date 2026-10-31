@@ -67,14 +67,15 @@
         const reply=await AiReportTrace.post(self.id,'为总览提炼各格子要点','/api/ai-report/cell/gist',{month:doc.reportMonth,lang,items:wanted.slice(0,40).map(cell=>({id:cell.id,title:cellTitle(cell,lang),prompt:String(cell.prompt||'').slice(0,600),result:compact(cell.output.result,1)}))}).catch(()=>({gists:{}}));
         for(const cell of wanted)if(reply.gists?.[cell.id])gists.set(gistKey(cell,lang),String(reply.gists[cell.id]).slice(0,300));
     }
-    async function compute(cell,month){
+    async function compute(cell,month,signal){
         if(readsResults(cell))await fillGists(cell);
+        signal?.throwIfAborted();
         // Outline/result sources already live in this report; do not require a backend for navigation.
-        const {input,missing}=cell.recipe.sources.every(source=>source.kind==='report')?{input:{},missing:[]}:await API.post('/api/ai-report/run-data',{month,recipe:cell.recipe});
+        const {input,missing}=cell.recipe.sources.every(source=>source.kind==='report')?{input:{},missing:[]}:await API.post('/api/ai-report/run-data',{month,recipe:cell.recipe},{signal});
         input.$month=month;
         for(const source of cell.recipe.sources)if(source.kind==='report')input[source.id]=reportInput(cell,source);
         // Overviews quote other cells' conclusions on purpose, so the one-summary check does not apply to them.
-        const {result,html,widgets}=await AiReportSandbox.run({compute:cell.recipe.compute,render:cell.recipe.render,input,summary:!!cell.recipe.narrative&&!readsResults(cell)});
+        const {result,html,widgets}=await AiReportSandbox.run({compute:cell.recipe.compute,render:cell.recipe.render,input,summary:!!cell.recipe.narrative&&!readsResults(cell)},{signal});
         // A recipe without narrative must not keep the summary box of an earlier recipe (two summaries on screen).
         const output=AiReportModel.normalizeOutput({...(cell.output||{}),...(cell.recipe.narrative?{}:{narrative:{zh:'',en:''},narrativeMonth:''}),month,result:keepResult(result),html:AiReportSanitize.clean(html),widgets:AiReportWidgets.cleanSpecs(widgets),error:'',generatedAt:new Date().toISOString()});
         return {output,missing};
@@ -86,11 +87,15 @@
     }
     // Numbers always come from the recipe; the summary is rewritten only when asked (it costs an AI call).
     async function run(cell,month,{withNarrative=true,style=''}={}){
+        const signal=window.AiReportTasks?.signal(cell.id);
         try{
-            const {output,missing}=await compute(cell,month);
+            signal?.throwIfAborted();
+            const {output,missing}=await compute(cell,month,signal);
+            signal?.throwIfAborted();
             cell.output=output;cell.missing=missing;
             if(withNarrative)cell.output=await narrative(cell,month,style);
         }catch(error){
+            if(error.name==='AbortError')throw error;
             cell.output=AiReportModel.normalizeOutput({...(cell.output||{}),month,error:error.message||String(error)});
             throw error;
         }

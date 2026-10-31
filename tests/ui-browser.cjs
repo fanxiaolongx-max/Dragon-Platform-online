@@ -160,6 +160,46 @@ async function environmentFlow(page,origin){
   assert.equal(await select.inputValue(),'remote');assert(await select.isDisabled());
   console.log('PASS: developer environment selector, shared profile switch and reload, native-base switch lock.');
 }
+async function stopFlow(page,origin){
+  nativeEnvironment=false;monthMode=false;
+  await page.goto(origin+'/');await page.locator('#airReport .kit-nav-item').first().waitFor();
+  if(await page.locator('#aiBar').isVisible())await page.locator('#aiBarClose').click();
+  await page.evaluate(()=>{
+    window.__modelCalls=0;window.__stopCalls=0;window.__late=[];
+    ADCChat.ask=async(_prompt,options)=>{window.__modelCalls++;await new Promise(resolve=>window.__late.push(()=>{options.onUpdate('{"type":"answer","text":"LATE RESPONSE MUST NOT APPEAR"}');resolve();}));};
+    ADCChat.stop=()=>window.__stopCalls++;
+  });
+  const pending=page.locator('#airReport .air-chapter').nth(2).locator('.air-pending');
+  await pending.nth(0).click();await page.locator('#airChat [data-try]').click();
+  await page.waitForFunction(()=>window.__modelCalls===1);
+  await pending.nth(1).click();await page.locator('#airChat [data-try]').click();
+  await page.locator('#airStop').click();
+  await page.waitForFunction(()=>document.querySelector('#airStop').hidden);
+  assert.equal(await page.evaluate(()=>window.__stopCalls),1,'Only active ADC conversation receives stop');
+  await page.waitForTimeout(200);
+  assert.equal(await page.evaluate(()=>window.__modelCalls),1,'Queued cells and correction loops must never call the model after stop');
+  assert.equal(await page.locator('#airReport').textContent().then(t=>t.includes('LATE RESPONSE')),false);
+  assert.equal(await page.locator('#airChat').textContent().then(t=>t.includes('LATE RESPONSE')),false);
+  await pending.nth(0).click();await page.locator('#airChat [data-try]').click();
+  await page.waitForFunction(()=>window.__modelCalls===2);
+  await page.evaluate(()=>window.__late.shift()());
+  await page.waitForTimeout(100);
+  assert(await page.locator('#airStop').isVisible(),'Old late response cannot clear the fresh generation');
+  assert.equal(await page.locator('#airChat').textContent().then(t=>t.includes('LATE RESPONSE')),false);
+  await page.locator('#airChat [data-stop-generation]').click();
+  await page.evaluate(()=>window.__late.splice(0).forEach(resolve=>resolve()));
+  await page.waitForTimeout(100);
+  assert.equal(await page.evaluate(()=>window.__modelCalls),2,'A fresh generation works after cancellation');
+  assert(await page.locator('#airStop').isHidden());
+  const sandbox=await page.evaluate(async()=>{
+    const controller=new AbortController();
+    const promise=AiReportSandbox.run({input:{},compute:'function compute(){while(true){}}',render:'function render(){return "";}'},{signal:controller.signal});
+    setTimeout(()=>controller.abort(),30);
+    try{await promise;return false;}catch(e){return e.name==='AbortError'&&!document.querySelector('iframe[aria-hidden="true"]');}
+  });
+  assert(sandbox,'Stopping computation must remove its sandbox and reject the result');
+  console.log('PASS: active and queued cell cancellation, ADC stop, ignored late responses, no retries, and fresh generation after stop.');
+}
 let browser;
 async function contained(page, selector = '#aiBar') {
   await page.waitForFunction(selector => {
@@ -397,6 +437,7 @@ async function assistantFeedback(page){
   await saveFlow(page,origin);
   await monthFlow(page,origin);
   await environmentFlow(page,origin);
+  await stopFlow(page,origin);
   assert.deepEqual(errors, []);
   console.log('PASS: restored geometry, four-edge dragging, both resize handles, dark buttons, iframe zoom, viewport resizing, visual viewport zoom, modal state/focus, root and prefixed API paths, sandboxed embedding.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => { await browser?.close(); server.close(); });

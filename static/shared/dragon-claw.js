@@ -523,7 +523,8 @@
      - owner 不同（例如 AI 月报用过之后回到助理浮窗）或 fresh=true 时先新建 ADC 会话，互不串上下文；
      - 新建会话失败（内网未捕获 session-init 路由等）时沿用当前会话，并在提问前声明这是一个全新的独立任务。 */
   const FRESH_NOTE=CTX+'以下是一个全新的独立任务，忽略本会话之前的所有内容。\n';
-  async function rawAsk(prompt, onUpdate){
+  async function rawAsk(prompt, onUpdate, signal){
+    signal?.throwIfAborted();
     const C=window.ADCChat;
     const first=!C.configured;
     let stealthed=false;
@@ -542,6 +543,7 @@
         let ready=frameHasComposer();
         for(let i=0;!ready && i<300;i++){
           await new Promise(r=>setTimeout(r,100));
+          signal?.throwIfAborted();
           if(C.configured || frameHasComposer()){ ready=true; break; }
         }
         if(!ready && !C.configured){
@@ -550,37 +552,43 @@
           setFrameVisible(true);
           for(let i=0;i<50;i++){
             await new Promise(r=>setTimeout(r,100));
+          signal?.throwIfAborted();
             if(C.configured || frameHasComposer()){ ready=true; break; }
           }
         }
         if(!ready && !C.configured) throw new Error('内嵌原页面未就绪：聊天输入框未出现，请展开「原 ADC 聊天页」后重试。');
       }
       let latest='';
-      await C.ask(prompt, { onUpdate:t=>{ latest=t||''; onUpdate&&onUpdate(latest); } });
-      return latest;
+      await C.ask(prompt, { onUpdate:t=>{ if(signal?.aborted)return;latest=t||''; onUpdate&&onUpdate(latest); } });
+      signal?.throwIfAborted();return latest;
     } finally {
       if(stealthed){ wrapEl.classList.remove('stealth'); lockFrame(false); }
       for(const el of muted) el.removeAttribute('aria-disabled');
     }
   }
-  function conversation(owner, fresh, fn){
+  function conversation(owner, fresh, fn, {signal}={}){
     const run=async()=>{
+      signal?.throwIfAborted();
       const C=window.ADCChat;
       if(!(onSite && hasClient)) throw new Error('当前页面无法连接 ADC 对话（需部署到数字人云端同源地址）');
       laneBusy=owner; updateButtons();
+      const abort=()=>{try{C.stop();}catch(_){}laneOwner=null;};
+      signal?.addEventListener('abort',abort,{once:true});
+      try{
       let pendingNote=false, used=false;
       const reset=async()=>{
+        signal?.throwIfAborted();
         if(!C.configured){ return true; }        // 还没有会话：首问会新建
-        try{ await C.newSession(); pendingNote=false; return true; }
-        catch(e){ pendingNote=true; return false; }
+        try{ await (window.AiReportTasks?.wait(C.newSession(),signal)||C.newSession()); signal?.throwIfAborted();pendingNote=false; return true; }
+        catch(e){ if(e.name==='AbortError')throw e;pendingNote=true; return false; }
       };
       let isNew=false;
       if(fresh || (laneOwner && laneOwner!==owner)){ await reset(); isNew=true; }
       laneOwner=owner;
-      const ask=async(prompt, onUpdate)=>{ const text=(pendingNote&&!used?FRESH_NOTE:'')+prompt; used=true; pendingNote=false; return rawAsk(text, onUpdate); };
+      const ask=async(prompt, onUpdate)=>{ const text=(pendingNote&&!used?FRESH_NOTE:'')+prompt; used=true; pendingNote=false; signal?.throwIfAborted();return window.AiReportTasks?.wait(rawAsk(text, onUpdate,signal),signal)||rawAsk(text,onUpdate,signal); };
       const fork=async()=>{ used=false; await reset(); };
-      try{ return await fn({ask, reset:fork, isNew}); }
-      finally{ laneBusy=null; updateButtons(); }
+      signal?.throwIfAborted();return await fn({ask, reset:fork, isNew}); }
+      finally{signal?.removeEventListener('abort',abort); laneBusy=null; updateButtons(); }
     };
     const next=lane.then(run, run);
     lane=next.catch(()=>{});

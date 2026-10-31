@@ -13,8 +13,9 @@ const M=AiReportModel;
 const MAX_TOOL_STEPS=8, TOOL_RESULT_CHARS=14000;
 const apiBase=()=>{ const p=location.pathname; return p.slice(0,p.lastIndexOf('/')+1)+'api'; };
 const fail=(status,message)=>Object.assign(new Error(message),{status});
-async function http(method, path, body){
-    const response=await fetch(apiBase()+path,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+async function http(method, path, body, signal){
+    signal?.throwIfAborted();
+    const response=await fetch(apiBase()+path,{method,signal,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
     let json;try{json=await response.json();}catch(_){throw fail(response.status,'服务器返回异常（HTTP '+response.status+'）');}
     if(json.code!==0)throw fail(json.code||response.status,json.message||('HTTP '+response.status));
     return json.data;
@@ -52,18 +53,20 @@ const TOOLS=[
     {name:'list_report_cells',description:'列出这份月报的章节和格子（编号、标题、跳转 anchor、各格子总结摘要）。做导航、总览、引用或总结其他格子时先用它',parameters:{type:'object',properties:{}}}
 ];
 async function runTool(call,month,context={}){
+    context.signal?.throwIfAborted();
     if(call.name==='list_report_cells')return context.outline||{chapters:[],note:'没有拿到月报大纲'};
     const args=call.args||{},source=args.source==='app'?'app':'netcare';
-    const execute=(tool,toolArgs)=>http('POST','/agent/execute',{tool,args:toolArgs}).then(data=>data.result);
+    const execute=(tool,toolArgs)=>http('POST','/agent/execute',{tool,args:toolArgs},context.signal).then(data=>data.result);
     if(call.name==='list_tables')return execute('list_tables',{source,keyword:String(args.keyword||'')});
     if(call.name==='describe_table')return execute('describe_table',{source,table:String(args.table||'')});
     if(call.name==='query'){const sql=M.validMonth(month)?resolveSql(args.sql,month):String(args.sql||'');return execute('query',{source,sql,limit:Math.max(1,Math.min(50,Number(args.limit)||20))});}
     throw new Error('未知工具 '+call.name+'，可用：'+TOOLS.map(tool=>tool.name).join('、'));
 }
 // 配方里的 SQL 来源按报告月份试跑一遍：出错的来源交回模型修正（对应平台版的 unknownSources 检查）。
-async function sqlProblems(month,sources){
+async function sqlProblems(month,sources,signal){
+    signal?.throwIfAborted();
     const list=sources.filter(source=>source.kind==='sql');if(!list.length)return [];
-    try{const {missing}=await http('POST','/air/run-data',{month,recipe:{sources:list}});return missing.map(item=>`${item.id}（${item.label||'未命名'}）：${item.error}`);}
+    try{const {missing}=await http('POST','/air/run-data',{month,recipe:{sources:list}},signal);return missing.map(item=>`${item.id}（${item.label||'未命名'}）：${item.error}`);}
     catch(error){return [`试跑失败：${error.message}`];}
 }
 
@@ -78,9 +81,10 @@ function renderMessages(messages){
     }).join('\n\n');
 }
 const toolProtocol=tools=>'\n\n【工具调用方式】这个对话里没有原生工具调用，改为输出 JSON 调用工具：需要查数据时，整条回复只输出一个对象 {"tool":"工具名","args":{参数}}（一次一个，不要夹带其它文字）；页面执行后会把结果发给你，你再继续调用工具，或按上面的约定输出最终 JSON。可用工具：\n'+tools.map(tool=>`- ${tool.name}(${Object.keys(tool.parameters?.properties||{}).join(', ')})：${tool.description}`).join('\n');
-function createClient(conv){
+function createClient(conv,signal){
     let thread=null;
-    return {async generateChat(options){
+    return {signal,async generateChat(options){
+        signal?.throwIfAborted();
         const messages=options.messages||[],tools=options.tools||null;let prompt;
         if(thread&&thread.messages===messages&&messages.length>=thread.sent){
             prompt=renderMessages(messages.slice(thread.sent).filter(item=>item.role!=='model'))+(tools?'\n\n继续：还需要数据就再输出一个工具调用 JSON；否则按约定输出最终结果。':'\n\n请按约定输出最终结果。');
@@ -93,6 +97,7 @@ function createClient(conv){
         const started=Date.now(),entry=trace({kind:'ai',system:clip(options.systemInstruction||''),messages:clip(prompt),tools:(tools||[]).map(tool=>tool.name)});
         try{
             const text=String(await conv.ask(prompt)||'');
+            signal?.throwIfAborted();
             let toolCalls=[];
             if(tools){const value=parseReplyDetailed(text).value;if(value&&typeof value.tool==='string'&&!value.type&&tools.some(tool=>tool.name===value.tool))toolCalls=[{id:'call_'+started,name:value.tool,args:value.args&&typeof value.args==='object'?value.args:{}}];}
             Object.assign(entry,{ms:Date.now()-started,reply:clip(text),toolCalls:toolCalls.length?clip(toolCalls.map(call=>({name:call.name,args:call.args}))):''});
@@ -309,6 +314,7 @@ async function checkConflict(client, result, { message, chat, sides }) {
 async function runWithTools(client, { system, month, messages, accept, fallback, tools = true, context = {} }) {
     const toolLog = [], retries = [];
     for (let step = 0; step < MAX_TOOL_STEPS + 2; step++) {
+        client.signal?.throwIfAborted();
         const result = await client.generateChat({ systemInstruction: system, messages, tools: tools && step < MAX_TOOL_STEPS ? TOOLS : undefined, maxOutputTokens: 8000, temperature: 0.2 });
         if (result.toolCalls?.length && step < MAX_TOOL_STEPS) {
             client = result.providerClient || client; // keep the provider that actually answered for the rest of the loop
@@ -316,7 +322,7 @@ async function runWithTools(client, { system, month, messages, accept, fallback,
             const toolResults = [];
             for (const call of result.toolCalls) {
                 toolLog.push(call.name);
-                try { toolResults.push({ id: call.id, name: call.name, content: JSON.stringify(await runTool(call, month, context)).slice(0, TOOL_RESULT_CHARS) }); }
+                try { toolResults.push({ id: call.id, name: call.name, content: JSON.stringify(await runTool(call, month, {...context,signal:client.signal})).slice(0, TOOL_RESULT_CHARS) }); }
                 catch (error) { toolResults.push({ id: call.id, name: call.name, content: error.message, isError: true }); }
                 const done = toolResults.at(-1);trace({ kind: 'tool', name: call.name, args: clip(call.args || {}), result: clip(done.content), ...(done.isError ? { error: done.content } : {}) });
             }
@@ -369,7 +375,7 @@ function compileTurn(client, { month, prompt, recipe, error, style = '', outline
             try { normalized = M.normalizeRecipe(tidyRecipe(reply.recipe)); }
             catch (problem) { return { retry: `配方无效：${problem.message}。请修正后只输出 JSON。` }; }
             // Made-up sources would only ever show "no data"; send them back while the model can still look them up.
-            const unknown = await sqlProblems(month, normalized.sources);
+            const unknown = await sqlProblems(month, normalized.sources,client.signal);
             if (unknown.length) return { retry: `这些 SQL 来源按报告月份试跑出错：${unknown.join('；')}。请用 list_tables / describe_table 核对表名和列名，用 query 试跑通过后再输出配方；确实找不到数据就回复 ask 说明，不要编造表名或列名。` };
             return { result: { type: 'recipe', reply: String(reply.reply || '').slice(0, 2000), recipe: normalized, tools: toolLog } };
         }
@@ -696,20 +702,21 @@ async function del(path){
     if(rel.startsWith('/documents/'))return http('DELETE','/air/documents/'+encodeURIComponent(decodeURIComponent(rel.slice(11))));
     throw fail(404,'接口不存在：'+rel);
 }
-async function post(path,body={}){
+async function post(path,body={}, {signal}={}){
+    signal?.throwIfAborted();
     const {rel}=route(path);
     if(rel==='/documents')return http('POST','/air/documents',body);
-    if(rel==='/run-data')return http('POST','/air/run-data',{month:body.month,recipe:M.normalizeRecipe(body.recipe)});
+    if(rel==='/run-data')return http('POST','/air/run-data',{month:body.month,recipe:M.normalizeRecipe(body.recipe)},signal);
     if(rel.startsWith('/image'))throw fail(501,NO_IMAGES);
     const handler=AI[rel];if(!handler)throw fail(404,'接口不存在：'+rel);
     const debug=body._debug===true,input={...body};delete input._debug;
     if(!window.DragonClaw?.ready())throw fail(503,'AI 对话不可用：需要在数字人云端（与 ADC 同源）打开本页面，或在 Dragon Platform 中托管运行。');
     return window.DragonClaw.conversation('air',true,async conv=>{
         const store=debug?[]:null;traceStore=store;
-        try{const reply=await handler(input,createClient(conv));return debug&&reply&&typeof reply==='object'?{...reply,_trace:store}:reply;}
+        try{const reply=await handler(input,createClient(conv,signal));signal?.throwIfAborted();return debug&&reply&&typeof reply==='object'?{...reply,_trace:store}:reply;}
         catch(error){if(debug)error.body={_trace:store};throw error;}
         finally{traceStore=null;}
-    });
+    },{signal});
 }
 window.API={get,post,delete:del};
 window.AiReportBackend={monthValues,resolveSql,TOOLS,createClient};

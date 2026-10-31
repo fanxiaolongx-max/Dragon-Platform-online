@@ -617,3 +617,6 @@ ol.kit-list{padding-left:2.6em}
 /* Historical duplicates stay accessible without crowding the default monthly list. */
 .air-report-list>details{border-top:1px solid var(--air-line);margin-top:4px;padding-top:4px}
 .air-report-list>details>summary{padding:8px 10px;font-size:12px;color:var(--air-muted);cursor:pointer}
+
+#airStop[hidden]{display:none!important}
+#airStop,[data-stop-generation]{border:1px solid #a84d4d;border-radius:6px;background:#7d3030;color:#fff;padding:5px 10px;cursor:pointer}

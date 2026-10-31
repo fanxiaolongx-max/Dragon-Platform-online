@@ -123,13 +123,15 @@ worker.onerror=error=>{error.preventDefault();parent.postMessage({runId:event.da
 worker.postMessage(event.data.job);});
 parent.postMessage({ready:true},'*');<\/script>`;
     }
-    async function run(job,{timeout=TIMEOUT_MS}={}){
-        const source=(await loadKit())+'\n'+WORKER,runId=Math.random().toString(36).slice(2);
+    async function run(job,{timeout=TIMEOUT_MS,signal}={}){
+        signal?.throwIfAborted();
+        const source=(await loadKit())+'\n'+WORKER;signal?.throwIfAborted();const runId=Math.random().toString(36).slice(2);
         const frame=document.createElement('iframe');
         frame.setAttribute('sandbox','allow-scripts');frame.setAttribute('aria-hidden','true');frame.tabIndex=-1;
         frame.style.cssText='position:absolute;width:0;height:0;border:0;visibility:hidden';
         return new Promise((resolve,reject)=>{
-            const finish=(error,value)=>{clearTimeout(timer);removeEventListener('message',listen);frame.remove();error?reject(error):resolve(value);};
+            const abort=()=>finish(new DOMException('已停止生成','AbortError'));
+            const finish=(error,value)=>{signal?.removeEventListener('abort',abort);clearTimeout(timer);removeEventListener('message',listen);frame.remove();error?reject(error):resolve(value);};
             const timer=setTimeout(()=>finish(new Error('配方运行超时（超过 '+Math.round(timeout/1000)+' 秒）')),timeout);
             function listen(event){
                 if(event.source!==frame.contentWindow||!event.data)return;
@@ -137,6 +139,7 @@ parent.postMessage({ready:true},'*');<\/script>`;
                 if(event.data.runId!==runId)return;
                 event.data.ok?finish(null,{result:event.data.result,html:event.data.html,widgets:event.data.widgets||[]}):finish(new Error(event.data.error||'配方运行失败'));
             }
+            signal?.addEventListener('abort',abort,{once:true});
             addEventListener('message',listen);
             frame.srcdoc=frameDocument(source);document.body.append(frame);
         });

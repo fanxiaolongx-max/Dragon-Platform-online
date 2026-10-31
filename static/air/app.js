@@ -84,6 +84,7 @@
         toolbar();status();
     }
     function toolbar(){
+        $('#airStop').hidden=!state.busy.size&&!busyFields.size;
         $('#airMonth').value=state.doc.reportMonth;
         $('#airReportName').textContent=state.doc.name+(state.doc.reportKind==='copy'?t(' · 副本',' · Copy'):state.doc.reportKind==='history'?t(' · 历史记录',' · History'):'');
         const reportEntry=item=>`<button type="button" data-open="${esc(item.id)}" aria-current="${item.id===state.doc.id}"><span>${esc(item.name)}${item.reportKind==='copy'?` · ${t('副本','Copy')}`:item.reportKind==='history'?` · ${t('历史记录','History')}`:''}</span><small>${esc(item.reportMonth)}</small></button>`;
@@ -120,10 +121,10 @@
     // Chat only discusses the cell; a final prompt is made on request, and “试一下” compiles and runs it.
     async function aiStep(cellId,label,work){
         const found=find(cellId);if(!found||state.busy.has(cellId))return;
-        checkpoint();state.busy.set(cellId,label);state.selected=cellId;render();
+        const task=AiReportTasks.begin(cellId);checkpoint();state.busy.set(cellId,label);state.selected=cellId;render();
         try{await work(found.cell);}
-        catch(error){const live=find(cellId)?.cell;if(live)live.chat.push({role:'ai',kind:'note',text:t('出错了：','Error: ')+error.message});}
-        finally{state.busy.delete(cellId);render();}
+        catch(error){if(AiReportTasks.isAbort(error))return;const live=find(cellId)?.cell;if(live)live.chat.push({role:'ai',kind:'note',text:t('出错了：','Error: ')+error.message});}
+        finally{if(AiReportTasks.current(cellId,task)){state.busy.delete(cellId);render();}}
     }
     // When the AI says the need is settled, the prompt is written and run right away — no clicks.
     function converse(cellId,text){
@@ -205,7 +206,7 @@
             state.busy.set(cellId,t('正在计算本月数据…','Computing this month…'));render();
             try{await AiReportRunner.run(cell,month,{style:styleOf(cell)});AiReportTrace.note(cellId,t(`运行配方（第 ${attempt+1} 次）：成功`,`Run recipe (attempt ${attempt+1}): ok`),t('沙箱里计算和展示都完成了。','Compute and render finished in the sandbox.'));render();const crowdedRow=reportRoot.querySelector(`[data-cell="${CSS.escape(cellId)}"]`)?.dataset.layoutIssue;
                 // Blocks that did not fit side by side go back once to be laid out properly; the last try keeps the automatic fix.
-                if(crowdedRow&&attempt<2)throw new Error(`${crowdedRow}。页面已临时缩小字号并换行，但请重新排版：把放不下的内容块换到下一行（如文字总结放在顶部或底部、图表和表格上下排列），或减少表格列数，保证每块在分到的宽度里完整显示。`);const lost=AiReportRunner.missingTitle(cell);if(lost&&String(cell.output?.html||'').replace(/<[^>]*>/g,'').trim()){usable={recipe:cell.recipe,output:cell.output,missing:cell.missing};}if(lost)throw new Error(`提示词要求显示标题“${lost}”，但格子里没有这个标题。请用 kit.layout(rows,{title:'${lost}'}) 或 kit.chart(option,{title:'${lost}'}) 把它显示在最上方。`);reconcileLayout(cell);rememberResult(cell);return;}catch(problem){error=problem.message;AiReportTrace.note(cellId,t(`运行出错（第 ${attempt+1} 次），交回 AI 修正`,`Run failed (attempt ${attempt+1}), sent back to the AI`),error,{error:true});}
+                if(crowdedRow&&attempt<2)throw new Error(`${crowdedRow}。页面已临时缩小字号并换行，但请重新排版：把放不下的内容块换到下一行（如文字总结放在顶部或底部、图表和表格上下排列），或减少表格列数，保证每块在分到的宽度里完整显示。`);const lost=AiReportRunner.missingTitle(cell);if(lost&&String(cell.output?.html||'').replace(/<[^>]*>/g,'').trim()){usable={recipe:cell.recipe,output:cell.output,missing:cell.missing};}if(lost)throw new Error(`提示词要求显示标题“${lost}”，但格子里没有这个标题。请用 kit.layout(rows,{title:'${lost}'}) 或 kit.chart(option,{title:'${lost}'}) 把它显示在最上方。`);reconcileLayout(cell);rememberResult(cell);return;}catch(problem){if(AiReportTasks.isAbort(problem))throw problem;error=problem.message;AiReportTrace.note(cellId,t(`运行出错（第 ${attempt+1} 次），交回 AI 修正`,`Run failed (attempt ${attempt+1}), sent back to the AI`),error,{error:true});}
         }
         if(usable){cell.recipe=usable.recipe;cell.recipePrompt=cell.prompt;cell.output=usable.output;cell.missing=usable.missing;reconcileLayout(cell);rememberResult(cell);}
         else if(before.output&&!before.output.error){cell.recipe=before.recipe;cell.recipePrompt=before.recipePrompt;cell.output=before.output;cell.missing=before.missing;}
@@ -242,7 +243,7 @@
                     await AiReportRunner.run(cell,month,{withNarrative:!!cell.recipe.narrative,style:styleOf(cell)});
                     const lost=AiReportRunner.missingTitle(cell);if(lost)throw new Error(`提示词要求显示标题“${lost}”，但格子里没有这个标题。`);
                     reconcileLayout(cell);rememberResult(cell);error='';break;
-                }catch(problem){error=problem.message||String(problem);AiReportTrace.note(cell.id,t('章节样式调整出错','Restyle failed'),error,{error:true});}
+                }catch(problem){if(AiReportTasks.isAbort(problem))throw problem;error=problem.message||String(problem);AiReportTrace.note(cell.id,t('章节样式调整出错','Restyle failed'),error,{error:true});}
             }
             if(error){cell.recipe=before.recipe;cell.output=before.output;cell.missing=before.missing;failed.push(AiReportRunner.cellTitle(cell,state.lang)||cell.id);}
             state.busy.delete(cell.id);render();
@@ -543,9 +544,10 @@
     function tryPrompt(cellId){return aiStep(cellId,t('正在把提示词变成配方…','Turning the prompt into a recipe…'),cell=>cellId===REPORT?applyStyle(cell):imageSlotOf(cellId)?drawImage(cellId,cell):fieldKeyOf(cellId)?generateField(fieldKeyOf(cellId)):chapterOf(cellId)?applyChapterStyle(cellId,cell):compileAndRun(cellId,cell));}
     async function runCell(cellId,{withNarrative=true}={}){
         const cell=find(cellId)?.cell;if(!cell?.recipe)return;
+        const task=AiReportTasks.begin(cellId);
         state.busy.set(cellId,t('正在计算本月数据…','Computing this month…'));render();
         try{await AiReportRunner.run(cell,state.doc.reportMonth,{withNarrative,style:styleOf(cell)});}catch(error){AiReportTrace.note(cellId,t('用本月数据重新计算：失败','Recompute with this month: failed'),error.message||String(error),{error:true});/* the error is also kept on the cell output */}
-        finally{state.busy.delete(cellId);render();}
+        finally{if(AiReportTasks.current(cellId,task)){state.busy.delete(cellId);render();}}
     }
     // Cells that read other cells (overviews, navigation) run after everything they read.
     // Cells run two at a time; each has its own recipe, sandbox and output, so they never affect one another. Cells the
@@ -553,16 +555,18 @@
     async function runAll({withNarrative=false,chapterId=''}={}){
         const scope=chapterId?state.doc.chapters.find(chapter=>chapter.id===chapterId)?.cells||[]:M.cells(state.doc);
         const cells=scope.filter(cell=>cell.recipe&&!state.busy.has(cell.id));if(!cells.length)return 0;
+        const epoch=AiReportTasks.epoch;
         for(const cell of cells)state.busy.set(cell.id,t('等待更新…','Queued…'));render();
         const queue=cells.filter(cell=>!AiReportRunner.readsReport(cell)),later=cells.filter(cell=>AiReportRunner.readsReport(cell));
-        await Promise.all([0,1].map(async()=>{while(queue.length){const cell=queue.shift();await runCell(cell.id,{withNarrative}).catch(()=>{});}}));
-        for(const cell of later)await runCell(cell.id,{withNarrative}).catch(()=>{});
+        await Promise.all([0,1].map(async()=>{while(queue.length&&epoch===AiReportTasks.epoch){const cell=queue.shift();await runCell(cell.id,{withNarrative}).catch(()=>{});}}));
+        for(const cell of later){if(epoch!==AiReportTasks.epoch)break;await runCell(cell.id,{withNarrative}).catch(()=>{});}
         rememberReportInputs();
         return cells.length;
     }
     async function refreshCells(chapterId=''){
+        const epoch=AiReportTasks.epoch;
         if(!state.doc.reportMonth)return status(t('请先选择报告月份','Pick the report month first'));
-        const count=await runAll({withNarrative:true,chapterId});if(!chapterId)await generateFields();
+        const count=await runAll({withNarrative:true,chapterId});if(epoch!==AiReportTasks.epoch)return;if(!chapterId)await generateFields();
         const failed=(chapterId?state.doc.chapters.find(chapter=>chapter.id===chapterId)?.cells||[]:M.cells(state.doc)).filter(cell=>cell.recipe&&cell.output?.error).length;
         status(!count?t('没有可以刷新的格子（还没生成，或正在处理中）','No cells to refresh'):failed?t(`已刷新 ${count} 个格子，其中 ${failed} 个出错，点开格子可以看原因`,`Refreshed ${count} cells; ${failed} failed`):t(`已用 ${state.doc.reportMonth} 的数据刷新 ${count} 个格子`,`Refreshed ${count} cells with ${state.doc.reportMonth} data`));
     }
@@ -572,8 +576,11 @@
     const inputOf=cell=>JSON.stringify(cell.recipe.sources.filter(source=>source.kind==='report').map(source=>AiReportRunner.reportInput(cell,source)));
     function rememberReportInputs(){for(const cell of M.cells(state.doc))if(AiReportRunner.readsReport(cell))reportInputs.set(cell.id,inputOf(cell));}
     function followReport(){
+        if(AiReportTasks.signal().aborted)return;
         clearTimeout(followTimer);
+        const epoch=AiReportTasks.epoch;
         followTimer=setTimeout(async()=>{
+            if(epoch!==AiReportTasks.epoch)return;
             for(const cell of M.cells(state.doc).filter(item=>AiReportRunner.readsReport(item)&&item.output&&!state.busy.has(item.id))){
                 const input=inputOf(cell),before=reportInputs.get(cell.id);reportInputs.set(cell.id,input);
                 if(before===undefined||before===input)continue;
@@ -584,7 +591,11 @@
         },400);
     }
     async function updateNarratives(){
+        const epoch=AiReportTasks.epoch;
         for(const cell of staleCells()){
+            if(epoch!==AiReportTasks.epoch)break;
+            if(state.busy.has(cell.id))continue;
+            AiReportTasks.begin(cell.id);
             state.busy.set(cell.id,t('AI 正在写总结…','AI is writing the summary…'));render();
             try{cell.output=await AiReportRunner.narrative(cell,state.doc.reportMonth,styleOf(cell));}catch(error){status(error.message);}
             finally{state.busy.delete(cell.id);render();}
@@ -620,7 +631,7 @@
         try{
             const reply=await AiReportTrace.post(FIELD+key,t(`生成开头字段：${field.label}`,`Header field: ${field.label}`),'/api/ai-report/template/field',{month:state.doc.reportMonth,label:field.label,prompt,current:{zh:field.target.zh,en:field.target.en},title:M.text(state.doc.template.title,'zh'),outline:AiReportRunner.outline(null)});
             checkpoint();field.target.zh=reply.zh;field.target.en=reply.en;record.appliedPrompt=prompt;
-        }catch(error){record.chat.push({role:'ai',kind:'note',text:t(`生成失败：${error.message}。可以在对话里补充说明后再试。`,`Generation failed: ${error.message}`)});status(t(`“${field.label}”没能生成：`,`“${field.label}” failed: `)+error.message);}
+        }catch(error){if(AiReportTasks.isAbort(error))return;record.chat.push({role:'ai',kind:'note',text:t(`生成失败：${error.message}。可以在对话里补充说明后再试。`,`Generation failed: ${error.message}`)});status(t(`“${field.label}”没能生成：`,`“${field.label}” failed: `)+error.message);}
         finally{busyFields.delete(key);render();}
     }
     // --- Image conversation ----------------------------------------------------------------------------------------
@@ -704,8 +715,8 @@
         gallery.picked=url;tpl.logo=url;record.appliedPrompt='';gallery.choices=withUndo(record,IMAGE_ACTIONS().filter((_,index)=>index!==1));render();
     }
     async function generateFields(){
-        const fields=state.doc.template.fields||{},keys=Object.keys(fields).filter(key=>fields[key].prompt&&M.fixedText(fields[key].prompt)===null);
-        await Promise.all(keys.map(generateField));return keys.length;
+        const fields=state.doc.template.fields||{},keys=Object.keys(fields).filter(key=>fields[key].prompt&&M.fixedText(fields[key].prompt)===null&&!state.busy.has(FIELD+key)&&!busyFields.has(key));
+        await Promise.all(keys.map(key=>{AiReportTasks.begin(FIELD+key);return generateField(key);}));return keys.length;
     }
     function moveCell(cellId,beforeId,chapterId){
         const from=M.findCell(state.doc,cellId);if(!from||cellId===beforeId)return;
@@ -1067,6 +1078,16 @@
         }
         if(event.data?.type==='aiops-environment-switched')location.reload();
     });
+    function stopGeneration(){
+        AiReportTasks.stop();
+        for(const entry of settling.values())clearTimeout(entry.timer);settling.clear();
+        clearTimeout(followTimer);
+        // Detach the document from old async callbacks before allowing a new generation.
+        state.doc=M.normalize(JSON.parse(JSON.stringify(state.doc)));state.busy.clear();busyFields.clear();state.rings.clear();
+        render();status(t('已停止生成，后续响应将被忽略','Generation stopped; late responses are ignored'));
+    }
+    $('#airStop').addEventListener('click',stopGeneration);
+    chatRoot.addEventListener('click',event=>{if(event.target.closest('[data-stop-generation]')){event.preventDefault();stopGeneration();}});
     $('#airMonth').addEventListener('change',event=>setMonth(event.target.value));
     $('.air-toolbar').addEventListener('click',async event=>{
         const button=event.target.closest('button');if(!button)return;const menu=button.closest('details');if(menu)menu.open=false;

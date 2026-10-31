@@ -57,7 +57,7 @@ jobs:
         run: |
           node --check static/shared/dragon-claw.js
           node --check static/shared/developer-mode.js
-          node --test tests/default-template.test.cjs
+          node --test tests/default-template.test.cjs tests/tasks.test.cjs
           node tests/ui-browser.cjs
 
   release:

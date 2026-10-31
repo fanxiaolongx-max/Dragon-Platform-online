@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = {
     "requirements.txt", "run.py", "AiOps-Report.version", "app/main.py",
-    "static/index.html", "static/air/default-template.json", "static/air/default-template.js", "static/air/default-logo.png", "db/init.sql", "db/init.sqlite.sql", "db/upgrade.sql", "db/upgrade.sqlite.sql",
+    "static/air/tasks.js", "static/index.html", "static/air/default-template.json", "static/air/default-template.js", "static/air/default-logo.png", "db/init.sql", "db/init.sqlite.sql", "db/upgrade.sql", "db/upgrade.sqlite.sql",
 }
 TOP_FILES = {"requirements.txt", "run.py", "AiOps-Report.version", "README.md"}
 SKIP_DIRS = {
