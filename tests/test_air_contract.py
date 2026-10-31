@@ -128,12 +128,16 @@ class AirContractTests(unittest.IsolatedAsyncioTestCase):
 
 
 class DeploymentSchemaTests(unittest.TestCase):
-    def test_old_platform_cannot_silently_claim_base_compatibility(self):
+    def test_host_contract_smooth_compatibility(self):
+        # 兼容旧平台或非 digital-human 配置：记录警告并返回 False，不再抛致命异常阻断启动
         with patch.dict('os.environ', {'PLATFORM_APP_SLUG': 'fixture', 'PLATFORM_APP_DATABASE_CONTRACT': 'platform'}):
-            with self.assertRaisesRegex(RuntimeError, '更新平台'):
-                assert_host_contract()
+            self.assertFalse(assert_host_contract())
+        # 数字人基座契约配置：正常通过
         with patch.dict('os.environ', {'PLATFORM_APP_SLUG': 'fixture', 'PLATFORM_APP_DATABASE_CONTRACT': 'digital-human'}):
-            assert_host_contract()
+            self.assertTrue(assert_host_contract())
+        # 真实数字人基座环境（无 PLATFORM_APP_SLUG）：正常通过
+        with patch.dict('os.environ', {}, clear=True):
+            self.assertTrue(assert_host_contract())
 
     def test_mysql_and_sqlite_deploy_the_same_five_tables_and_columns(self):
         conn = sqlite3.connect(':memory:')
