@@ -4,6 +4,10 @@
 通过 httpx 调用基座 REST API（API-Q1~Q5）访问数据。
 环境变量配置：BASE_QUERY_URL / APP_DATASOURCE_ID / APP_SCHEMA / BUSINESS_DATASOURCE_NAME。
 """
+import asyncio
+import time
+from email.utils import parsedate_to_datetime
+
 import httpx
 
 from app.config import settings
@@ -60,10 +64,69 @@ async def close_client() -> None:
     _client = None
 
 
+class BaseRequestGate:
+    """应用内所有取数共享节奏，给基座的其它请求留出额度；只重试明确未执行的限流响应。"""
+    def __init__(self, interval=0.1, clock=time.monotonic, sleep=asyncio.sleep):
+        self.interval, self.clock, self.sleep = interval, clock, sleep
+        self.lock = asyncio.Lock()
+        self.next_at = 0.0
+
+    async def wait(self):
+        async with self.lock:
+            while self.next_at > self.clock():
+                await self.sleep(self.next_at - self.clock())
+            self.next_at = self.clock() + self.interval
+
+    def cooldown(self, seconds):
+        self.next_at = max(self.next_at, self.clock() + seconds)
+
+
+_gate = BaseRequestGate()
+
+
+def _retry_after(response, attempt):
+    value = response.headers.get("Retry-After", "")
+    try:
+        seconds = float(value)
+    except ValueError:
+        try:
+            seconds = parsedate_to_datetime(value).timestamp() - time.time()
+        except (ValueError, TypeError, OverflowError):
+            seconds = 0
+    return max(0.5 * 2 ** attempt, seconds)
+
+
+async def _base_request(method, url, **kwargs):
+    for attempt in range(4):
+        await _gate.wait()
+        # 网络超时或其它模糊失败不自动重发写入，防止已成功的 INSERT 被再次执行。
+        response = await _get_client().request(method, url, **kwargs)
+        try:
+            data = response.json()
+        except ValueError:
+            data = None
+        code = data.get("code") if isinstance(data, dict) else None
+        limited = response.status_code == 429 or code in (429, "429", "HOSTED_DATA_RATE_LIMIT")
+        if limited:
+            delay = _retry_after(response, attempt)
+            _gate.cooldown(delay)
+            if attempt < 3 and delay <= 10:
+                continue
+            error = DatabaseError("请求限流，已自动等待重试；请稍后保存同一份月报，未保存内容仍保留在页面中")
+            error.code = 429
+            error.data = {"retryAfter": delay}
+            raise error
+        if response.is_error:
+            raise DatabaseError(f"基座 API 请求失败（HTTP {response.status_code}）")
+        if not isinstance(data, dict):
+            raise DatabaseError("基座 API 返回了无效的 JSON 响应")
+        return data
+
+
 async def base_query_app_schema(sql: str, limit: int = 100) -> dict:
     """API-Q1: 查询应用 schema 内的表（datasourceId + schema 限定）"""
     assert_read_query(sql, backslash_escapes=sql_helper.BACKSLASH_ESCAPES)
-    r = await _get_client().post(
+    return await _base_request("POST",
         settings.BASE_QUERY_URL,
         json={
             "datasourceId": settings.APP_DATASOURCE_ID,
@@ -72,7 +135,6 @@ async def base_query_app_schema(sql: str, limit: int = 100) -> dict:
             "limit": max(1, min(1000, int(limit))),
         },
     )
-    return r.json()
 
 
 async def base_execute_app_schema(sql: str) -> dict:
@@ -85,7 +147,7 @@ async def base_execute_app_schema(sql: str) -> dict:
         if settings.INJECT_IDENTITY_HEADERS
         else None
     )
-    r = await _get_client().post(
+    return await _base_request("POST",
         _base_execute_url(),
         json={
             "datasourceId": settings.APP_DATASOURCE_ID,
@@ -94,7 +156,6 @@ async def base_execute_app_schema(sql: str) -> dict:
         },
         headers=headers,
     )
-    return r.json()
 
 
 async def base_query_business(sql: str, limit: int = 100) -> dict:
@@ -102,7 +163,7 @@ async def base_query_business(sql: str, limit: int = 100) -> dict:
     assert_read_query(sql, backslash_escapes=sql_helper.BACKSLASH_ESCAPES)
     if not settings.BUSINESS_DATASOURCE_NAME:
         raise RuntimeError("未注入 BUSINESS_DATASOURCE_NAME，请创建应用时指定业务数据库")
-    r = await _get_client().post(
+    return await _base_request("POST",
         settings.BASE_QUERY_URL,
         json={
             "datasourceName": settings.BUSINESS_DATASOURCE_NAME,
@@ -110,13 +171,11 @@ async def base_query_business(sql: str, limit: int = 100) -> dict:
             "limit": max(1, min(1000, int(limit))),
         },
     )
-    return r.json()
 
 
 async def base_find_table_datasource(table_name: str) -> dict:
     """API-Q5: 按表名反查所属业务数据源组"""
-    r = await _get_client().get(_base_find_table_url(), params={"table": table_name})
-    return r.json()
+    return await _base_request("GET", _base_find_table_url(), params={"table": table_name})
 
 
 async def check_base_api() -> bool:
@@ -140,7 +199,7 @@ async def query_app_schema(sql: str, limit: int = 100) -> list[dict]:
     """查询应用 schema 内数据，返回 rows 列表。"""
     try:
         resp = await base_query_app_schema(sql, limit)
-    except QueryValidationError:
+    except (QueryValidationError, DatabaseError):
         raise
     except Exception as exc:
         raise DatabaseError(f"基座 API 请求失败：{exc}")
@@ -153,7 +212,7 @@ async def execute_app_schema(sql: str) -> int:
     """写操作（INSERT/UPDATE/DELETE），返回 affectedRows。"""
     try:
         resp = await base_execute_app_schema(sql)
-    except QueryValidationError:
+    except (QueryValidationError, DatabaseError):
         raise
     except Exception as exc:
         raise DatabaseError(f"基座 API 请求失败：{exc}")
@@ -166,7 +225,7 @@ async def query_business(sql: str, limit: int = 100) -> list[dict]:
     """查询业务库（只读），返回 rows 列表。"""
     try:
         resp = await base_query_business(sql, limit)
-    except QueryValidationError:
+    except (QueryValidationError, DatabaseError):
         raise
     except Exception as exc:
         raise DatabaseError(f"基座 API 请求失败：{exc}")

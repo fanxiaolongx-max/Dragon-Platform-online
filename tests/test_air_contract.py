@@ -1,4 +1,5 @@
 """AIR runs through the same REST contract; SQLite exists only in this test fake base."""
+import asyncio
 import ast
 import json
 import re
@@ -29,12 +30,16 @@ class AirContractTests(unittest.IsolatedAsyncioTestCase):
         settings.APP_DATASOURCE_ID = 'app'
         settings.APP_SCHEMA = 'fixture-schema'
         settings.BUSINESS_DATASOURCE_NAME = 'fixture-business'
+        self.original_gate, self.original_save_lock = db._gate, air_service._save_lock
+        db._gate = db.BaseRequestGate()
+        air_service._save_lock = asyncio.Lock()
         self.original_client, self.original_dialect = db._client, db._dialect_checked
         db._dialect_checked = False
         db._client = httpx.AsyncClient(transport=httpx.MockTransport(self.handle), trust_env=False)
 
     async def asyncTearDown(self):
         await db._client.aclose()
+        db._gate, air_service._save_lock = self.original_gate, self.original_save_lock
         db._client, db._dialect_checked = self.original_client, self.original_dialect
         for key, value in self.original_settings.items():
             setattr(settings, key, value)
@@ -125,6 +130,120 @@ class AirContractTests(unittest.IsolatedAsyncioTestCase):
         rows = await db.query_business("SELECT count(*) AS total FROM orders WHERE month='2026-09'", 5000)
         self.assertEqual(rows, [{'total': 12}])
         self.assertEqual(self.requests[0][1]['datasourceName'], 'fixture-business')
+
+    def virtual_gate(self):
+        class Clock:
+            now = 0.0
+            async def sleep(self, delay):
+                self.now += delay
+                await asyncio.sleep(0)
+        clock = Clock()
+        db._gate = db.BaseRequestGate(clock=lambda: clock.now, sleep=clock.sleep)
+        return clock
+
+    async def use_handler(self, handler):
+        await db._client.aclose()
+        db._client = httpx.AsyncClient(transport=httpx.MockTransport(handler), trust_env=False)
+
+    async def test_complete_template_saves_under_host_bucket_and_reuses_first_save_key(self):
+        clock = self.virtual_gate()
+        bucket = {"tokens": 40.0, "at": 0.0, "limited": 0}
+        def limited(request):
+            bucket["tokens"] = min(40, bucket["tokens"] + (clock.now - bucket["at"]) * 20)
+            bucket["at"] = clock.now
+            if bucket["tokens"] < 1:
+                bucket["limited"] += 1
+                return httpx.Response(429, json={"code": "HOSTED_DATA_RATE_LIMIT", "message": "limited"})
+            bucket["tokens"] -= 1
+            return self.handle(request)
+        await self.use_handler(limited)
+        doc = json.loads((ROOT / 'static/air/default-template.json').read_text())
+        doc.update(reportMonth='2026-09', saveKey='stable-client-save')
+        saved = await air_service.save_document(doc)
+        initial_calls = len(self.requests)
+        self.assertLessEqual(initial_calls, 13, 'full default template should use batched inserts')
+        self.assertEqual(sum(len(c['cells']) for c in saved['chapters']), 18)
+        self.assertEqual(self.connection.execute('SELECT count(*) FROM t_report_config').fetchone()[0], 19)
+        again = await air_service.save_document(doc)
+        self.assertEqual(again['id'], saved['id'])
+        self.assertEqual(self.connection.execute('SELECT count(*) FROM t_report_template').fetchone()[0], 1)
+        self.assertEqual(bucket['limited'], 0)
+        self.assertEqual([x['prompt'] for c in saved['chapters'] for x in c['cells']], [x['prompt'] for c in doc['chapters'] for x in c['cells']])
+
+    async def test_explicit_http_and_business_limit_retry_after_then_succeed(self):
+        clock = self.virtual_gate()
+        attempts = []
+        def limits(request):
+            attempts.append(clock.now)
+            if len(attempts) == 1:
+                return httpx.Response(429, headers={'Retry-After': '2'}, text='busy')
+            if len(attempts) == 2:
+                return httpx.Response(200, json={'code': 429, 'message': 'busy'})
+            return self.handle(request)
+        await self.use_handler(limits)
+        self.assertEqual(await db.query_app_schema('SELECT 1 AS n'), [{'n': 1}])
+        self.assertGreaterEqual(attempts[1] - attempts[0], 2)
+        self.assertGreaterEqual(attempts[2] - attempts[1], 1)
+
+    async def test_persistent_limit_is_bounded_and_ambiguous_writes_are_never_replayed(self):
+        self.virtual_gate()
+        calls = []
+        def limited(request):
+            calls.append(request)
+            return httpx.Response(429, json={'code': 'HOSTED_DATA_RATE_LIMIT'})
+        await self.use_handler(limited)
+        with self.assertRaises(DatabaseError) as caught:
+            await db.execute_app_schema("INSERT INTO t_report_template(name) VALUES('test')")
+        self.assertEqual(caught.exception.code, 429)
+        self.assertEqual(len(calls), 4)
+        calls.clear()
+        def ambiguous(request):
+            calls.append(request)
+            raise httpx.ReadTimeout('response lost', request=request)
+        await self.use_handler(ambiguous)
+        with self.assertRaises(DatabaseError):
+            await db.execute_app_schema("INSERT INTO t_report_template(name) VALUES('test')")
+        self.assertEqual(len(calls), 1)
+
+    async def test_partial_write_timeout_resumes_same_report_without_duplicate_rows(self):
+        self.virtual_gate()
+        for index, table in enumerate(['t_report_template', 't_report_block', 't_report_config'], 1):
+            failed = False
+            def timeout_after_insert(request):
+                nonlocal failed
+                response = self.handle(request)
+                sql = json.loads(request.content)['sql']
+                if not failed and sql.startswith('INSERT INTO ' + table + ' '):
+                    failed = True
+                    raise httpx.ReadTimeout('committed but response lost', request=request)
+                return response
+            await self.use_handler(timeout_after_insert)
+            doc = json.loads((ROOT / 'static/air/default-template.json').read_text())
+            doc.update(reportMonth='2026-09', saveKey='resumable-' + table)
+            with self.assertRaises(DatabaseError):
+                await air_service.save_document(doc)
+            saved = await air_service.save_document(doc)
+            self.assertTrue(saved['id'].isdigit())
+            self.assertEqual(self.connection.execute('SELECT count(*) FROM t_report_template').fetchone()[0], index)
+            self.assertEqual(self.connection.execute('SELECT count(*) FROM t_report_block').fetchone()[0], 18 * index)
+            self.assertEqual(self.connection.execute('SELECT count(*) FROM t_report_config').fetchone()[0], 19 * index)
+
+    async def test_batch_insert_chunks_by_utf8_size_and_preserves_quotes(self):
+        self.virtual_gate()
+        text = "字'" * 20_000
+        rows = [[1, None, 'test', text, '', ''] for _ in range(3)]
+        await air_service._insert_rows('t_report_config', ['report_id','block_id','section','config_text','created_at','updated_at'], rows)
+        inserts = [body['sql'] for path, body in self.requests if path.endswith('/execute')]
+        self.assertGreater(len(inserts), 1)
+        self.assertTrue(all(len(sql.encode('utf-8')) < 200_000 for sql in inserts))
+        self.assertEqual([row[0] for row in self.connection.execute('SELECT config_text FROM t_report_config')], [text] * 3)
+
+    async def test_concurrent_first_saves_with_same_key_return_same_report(self):
+        self.virtual_gate()
+        doc = {'saveKey': 'concurrent-save', 'name': 'same', 'reportMonth': '2026-09', 'chapters': []}
+        one, two = await asyncio.gather(air_service.save_document(doc), air_service.save_document(doc))
+        self.assertEqual(one['id'], two['id'])
+        self.assertEqual(self.connection.execute('SELECT count(*) FROM t_report_template').fetchone()[0], 1)
 
 
 class DeploymentSchemaTests(unittest.TestCase):

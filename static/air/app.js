@@ -3,10 +3,11 @@
     'use strict';
     const M=AiReportModel,esc=AiReportView.esc;
     const $=selector=>document.querySelector(selector);
-    const state={doc:null,saved:'',lang:/^en/i.test(window.ToolsI18n?.getLanguage?.()||'')?'en':'zh',preview:false,selected:null,busy:new Map(),undo:[],reports:[],drafts:new Map()};
+    const state={doc:null,saved:'',lang:/^en/i.test(window.ToolsI18n?.getLanguage?.()||'')?'en':'zh',preview:false,selected:null,busy:new Map(),undo:[],reports:[],drafts:new Map(),saving:false,saveKey:M.uid('save')};
     const t=(zh,en)=>state.lang==='en'?en:zh;
     // An opened but unused chapter style chat is not an unsaved change.
-    const snapshot=()=>JSON.stringify(state.doc,(key,value)=>(key==='style'||M.FIELD_KEY.test(key)||M.IMAGE_KEY.test(key))&&value&&typeof value==='object'&&'chat' in value&&!value.prompt&&!value.chat?.length&&!value.theme?undefined:value);
+    const snapshotOf=doc=>JSON.stringify(doc,(key,value)=>(key==='style'||M.FIELD_KEY.test(key)||M.IMAGE_KEY.test(key))&&value&&typeof value==='object'&&'chat' in value&&!value.prompt&&!value.chat?.length&&!value.theme?undefined:value);
+    const snapshot=()=>snapshotOf(state.doc);
     const dirty=()=>!!state.doc&&snapshot()!==state.saved;
     const previousMonth=()=>{const date=new Date();date.setUTCDate(1);date.setUTCMonth(date.getUTCMonth()-1);return date.toISOString().slice(0,7);};
     const reportRoot=$('#airReport'),chatRoot=$('#airChat');
@@ -14,7 +15,7 @@
     function checkpoint(){state.undo.push(snapshot());if(state.undo.length>60)state.undo.shift();}
     function undo(){const previous=state.undo.pop();if(!previous)return status(t('没有可撤销的操作','Nothing to undo'));state.doc=JSON.parse(previous);render();status(t('已撤销','Undone'));}
     let statusTimer=null;
-    function status(message){const node=$('#airStatus');clearTimeout(statusTimer);if(message){node.textContent=message;statusTimer=setTimeout(()=>status(),3500);return;}node.textContent=state.busy.size?t(`AI 正在处理 ${state.busy.size} 个格子…`,`AI working on ${state.busy.size} cell(s)…`):dirty()?t('● 未保存','● Unsaved'):t('已保存','Saved');node.classList.toggle('is-dirty',dirty());}
+    function status(message){const node=$('#airStatus');clearTimeout(statusTimer);if(message){node.textContent=message;statusTimer=setTimeout(()=>status(),3500);return;}node.textContent=state.saving?t('正在保存，请稍候…','Saving, please wait…'):state.busy.size?t(`AI 正在处理 ${state.busy.size} 个格子…`,`AI working on ${state.busy.size} cell(s)…`):dirty()?t('● 未保存','● Unsaved'):t('已保存','Saved');node.classList.toggle('is-dirty',dirty());}
 
     // The whole report is one more conversation target: its style chat lives on doc.style and only changes the look.
     const REPORT='__report__';
@@ -90,7 +91,7 @@
         narratives.hidden=!stale||state.preview;narratives.textContent=t(`更新总结（${stale}）`,`Update summaries (${stale})`);
         $('[data-air=preview]').textContent=state.preview?t('返回编辑','Edit'):t('预览','Preview');
         $('[data-air=language]').textContent=state.lang==='en'?'中文':'EN';
-        $('[data-air=save]').disabled=!dirty();
+        $('[data-air=save]').disabled=state.saving||!dirty();
         document.title=`${state.doc.name} - AI 月报`;
     }
     // Rings grow from where they were; a cell that just finished shows one full (or red, on error) ring that fades out.
@@ -1004,17 +1005,28 @@
     });
     reportRoot.addEventListener('dblclick',event=>{const handle=event.target.closest('[data-resize]');if(!handle)return;const cell=find(handle.dataset.resize)?.cell;if(cell){checkpoint();cell.height=0;cell.fit=false;render();}});
 
-    async function loadReports(){try{state.reports=await API.get('/api/ai-report/documents');}catch(error){state.reports=[];status(error.message);}}
-    async function confirmDiscard(){return !dirty()||AppDialog.confirm(t('当前月报有未保存的修改，确定放弃吗？','This report has unsaved changes. Discard them?'),{tone:'danger',confirmText:t('放弃修改','Discard')});}
+    async function loadReports(){try{state.reports=await API.get('/api/ai-report/documents');return true;}catch(error){status(error.message);return false;}}
+    async function confirmDiscard(){if(state.saving){status(t('正在保存，请稍候…','Saving, please wait…'));return false;}return !dirty()||AppDialog.confirm(t('当前月报有未保存的修改，确定放弃吗？','This report has unsaved changes. Discard them?'),{tone:'danger',confirmText:t('放弃修改','Discard')});}
     async function openReport(id){if(!await confirmDiscard())return;state.doc=M.normalize(await API.get('/api/ai-report/documents/'+encodeURIComponent(id)));state.saved=snapshot();state.undo=[];state.selected=null;render();}
-    async function newReport(month=previousMonth()){if(!await confirmDiscard())return;state.doc=M.normalize(await API.get('/api/ai-report/template?month='+month));state.saved='';state.undo=[];state.selected=null;render();
+    async function newReport(month=previousMonth()){if(!await confirmDiscard())return;state.doc=M.normalize(await API.get('/api/ai-report/template?month='+month));state.saveKey=M.uid('save');state.saved='';state.undo=[];state.selected=null;render();
         // Only outline navigation runs immediately: it needs neither a business DB nor an AI call.
         for(const cell of M.cells(state.doc).filter(item=>item.recipe&&!item.recipe.narrative&&item.recipe.sources.length&&item.recipe.sources.every(source=>source.kind==='report'&&source.include==='outline')))await runCell(cell.id,{withNarrative:false});
     }
     async function save(){
-        if(!state.doc)return;$('[data-air=save]').disabled=true;
-        try{const saved=M.normalize(await API.post('/api/ai-report/documents',state.doc));state.doc.id=saved.id;state.doc.updatedAt=saved.updatedAt;state.saved=snapshot();await loadReports();render();status(t('已保存到服务器','Saved to server'));}
-        catch(error){status(t('保存失败：','Save failed: ')+error.message);toolbar();}
+        if(!state.doc||state.saving)return;
+        const doc=state.doc,submitted=JSON.parse(JSON.stringify(doc)),saveKey=state.saveKey;
+        state.saving=true;toolbar();status();
+        try{
+            const saved=M.normalize(await API.post('/api/ai-report/documents',{...submitted,saveKey}));
+            submitted.id=saved.id;submitted.updatedAt=saved.updatedAt;
+            if(state.doc===doc){
+                doc.id=saved.id;doc.updatedAt=saved.updatedAt;state.saved=snapshotOf(submitted);
+            }
+            let listed=true;
+            try{listed=await loadReports();}catch(_){listed=false;}
+            if(state.doc===doc){render();status(!listed?t('月报已保存，列表刷新失败；请稍后重新打开列表','Report saved; list refresh failed'):dirty()?t('已保存提交时的内容，后续修改尚未保存','Submitted content saved; later edits remain unsaved'):t('已保存到服务器','Saved to server'));}
+        }catch(error){if(state.doc===doc)status(t('保存失败：','Save failed: ')+error.message);}
+        finally{state.saving=false;toolbar();}
     }
     async function setMonth(month){
         if(!M.validMonth(month)||month===state.doc.reportMonth)return;
@@ -1022,10 +1034,12 @@
         if(staleCells().length)status(t('数字已按新月份更新；文字总结点“更新总结”重写','Numbers updated; use “Update summaries” to rewrite the text'));
     }
     async function renameOrCopy(copy){
+        if(state.saving)return status(t('正在保存，请稍候…','Saving, please wait…'));
         const name=await AppDialog.prompt(copy?t('另存为新的月报名称','Save as a new report named'):t('月报名称','Report name'),{defaultValue:state.doc.name});
-        if(!name?.trim())return;checkpoint();state.doc.name=name.trim().slice(0,200);if(copy)state.doc.id='';render();if(copy)await save();
+        if(!name?.trim())return;checkpoint();state.doc.name=name.trim().slice(0,200);if(copy){state.doc.id='';state.saveKey=M.uid('save');}render();if(copy)await save();
     }
     async function removeReport(){
+        if(state.saving)return status(t('正在保存，请稍候…','Saving, please wait…'));
         if(!state.doc.id||!await AppDialog.confirm(t(`删除月报“${state.doc.name}”？此操作不能撤销。`,`Delete report “${state.doc.name}”? This cannot be undone.`),{tone:'danger',confirmText:t('删除','Delete')}))return;
         await API.delete('/api/ai-report/documents/'+encodeURIComponent(state.doc.id));state.saved=snapshot();await loadReports();
         if(state.reports.length)await openReport(state.reports[0].id);else await newReport();

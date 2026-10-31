@@ -7,6 +7,8 @@ const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
 const requests = [], errors = [];
 const prefix = '/digital-human/dh/fixture-app/';
+let failSave=false, failList=false;
+const saves=[];
 let executionFailure=null, htmlFallback=false;
 const adc = `window.ADCChat={configured:true,busy:false,environment:'Fixture',newSession:async()=> 'fixture',stop(){},ask:async(_q,o)=>o.onUpdate('验证回答。\\n\\n\`\`\`js\\nconst answer = 2;\\n\`\`\`')};`;
 const server = http.createServer((req, res) => {
@@ -21,6 +23,15 @@ const server = http.createServer((req, res) => {
     res.setHeader('x-request-id','fixture-error-123');
     res.setHeader('Content-Type',executionFailure.raw?'text/html':'application/json');
     res.end(executionFailure.raw||JSON.stringify(executionFailure.json)); return;
+  }
+  if (url === '/api/air/documents' && req.method === 'POST') {
+    let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
+      const doc=JSON.parse(body);saves.push(doc);
+      setTimeout(()=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(failSave?{code:429,message:'fixture rate limited'}:{code:0,data:{...doc,id:'101',updatedAt:'2026-10-31T18:00:00Z'}}));},200);
+    });return;
+  }
+  if (url === '/api/air/documents' && failList) {
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({code:500,message:'fixture list failed'}));return;
   }
   if (url.startsWith('/api/')) {
     res.setHeader('Content-Type', 'application/json');
@@ -48,6 +59,36 @@ const server = http.createServer((req, res) => {
   }
   res.end(content);
 });
+async function saveFlow(page,origin){
+  await page.goto(origin+'/');
+  await page.locator('#airReport .kit-nav-item').first().waitFor();
+  if(await page.locator('#aiBar').isVisible())await page.locator('#aiBarClose').click();
+  const save=page.locator('[data-air="save"]');
+  failSave=true;
+  await save.click();
+  await page.keyboard.press('Control+s');await page.keyboard.press('Control+s');
+  await page.locator('#airStatus').filter({hasText:'保存失败'}).waitFor();
+  assert.equal(saves.length,1,'Double save shortcuts must share the pending save');
+  assert(await save.isEnabled(),'Failed save remains retryable');
+  failSave=false;
+  await save.click();
+  const title=page.locator('#airReport [data-edit="title"]');
+  await title.fill('保存期间修改标题');await title.press('Tab');
+  await page.locator('#airStatus').filter({hasText:'后续修改尚未保存'}).waitFor();
+  assert.equal(saves[0].saveKey,saves[1].saveKey,'Retry reuses stable first-save key');
+  assert.equal(saves[1].template.title.zh,'埃及代表处交付与服务维护月报');
+  assert.equal(await title.textContent(),'保存期间修改标题','Response must not overwrite edits made during save');
+  assert(await save.isEnabled(),'Edits made during save must remain dirty');
+  failList=true;
+  await save.click();
+  await page.locator('#airStatus').filter({hasText:'月报已保存，列表刷新失败'}).waitFor();
+  assert.equal(saves.length,3);
+  assert.equal(saves[2].id,'101');
+  assert.equal(saves[2].template.title.zh,'保存期间修改标题');
+  assert(await save.isDisabled(),'List refresh failure does not undo successful save');
+  failList=false;
+  console.log('PASS: duplicate-save guard, stable retry key, edits during save, and successful save with failed list refresh.');
+}
 let browser;
 async function contained(page, selector = '#aiBar') {
   await page.waitForFunction(selector => {
@@ -282,6 +323,7 @@ async function assistantFeedback(page){
   await workspace(page, origin, prefix, true);
   htmlFallback = false;
   assert(!requests.some(url => /\/dev(?:\?|$)/.test(url)), 'Developer mode must not navigate to /dev');
+  await saveFlow(page,origin);
   assert.deepEqual(errors, []);
   console.log('PASS: restored geometry, four-edge dragging, both resize handles, dark buttons, iframe zoom, viewport resizing, visual viewport zoom, modal state/focus, root and prefixed API paths, sandboxed embedding.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => { await browser?.close(); server.close(); });

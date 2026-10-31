@@ -10,6 +10,7 @@
 
 提示词以 t_report_config 为准：在调试页或对话里改了配置行，下次打开月报就生效。
 """
+import asyncio
 import calendar
 import json
 import re
@@ -28,6 +29,8 @@ MAX_DOC_CHARS = 30_000_000
 DATA_LIMIT = 1000
 _MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 _ID = re.compile(r"^[-\w]{1,32}$")
+_SAVE_ID = re.compile(r"^[-a-zA-Z0-9_]{1,80}$")
+_save_lock = asyncio.Lock()
 
 
 def _now() -> str:
@@ -176,21 +179,40 @@ def _split(doc: dict) -> tuple[dict, list[dict], str]:
     return content, cells, style_prompt
 
 
-async def _upsert_config(existing: dict, report_id: int, block_id: Any, section: str, value: dict) -> None:
+async def _insert_rows(table: str, columns: list[str], rows: list[list]) -> None:
+    """标准单语句 INSERT，按字节分块；兼容 MySQL/SQLite，不需要事务或建表权限。"""
+    prefix = f"INSERT INTO {table} ({', '.join(columns)}) VALUES "
+    values, size = [], len(prefix)
+    for row in rows:
+        value = "(" + ", ".join(lit(v) for v in row) + ")"
+        length = len(value.encode("utf-8"))
+        if values and size + length > 200_000:
+            await execute_app_schema(prefix + ", ".join(values))
+            values, size = [], len(prefix)
+        values.append(value)
+        size += length + 2
+    if values:
+        await execute_app_schema(prefix + ", ".join(values))
+
+
+async def _upsert_config(existing: dict, report_id: int, block_id: Any, section: str, value: dict, pending: list) -> None:
     text = _dumps(value)
     key = (block_id, section)
     row = existing.get(key)
-    block_sql = "NULL" if block_id is None else str(int(block_id))
     if row:
         if row.get("config_text") != text:
             await execute_app_schema(f"UPDATE t_report_config SET config_text = {lit(text)}, updated_at = {lit(_now())} WHERE id = {row['id']}")
     else:
-        await execute_app_schema(
-            f"INSERT INTO t_report_config (report_id, block_id, section, config_text, created_at, updated_at) "
-            f"VALUES ({report_id}, {block_sql}, {lit(section)}, {lit(text)}, {lit(_now())}, {lit(_now())})")
+        pending.append([report_id, block_id, section, text, _now(), _now()])
 
 
 async def save_document(doc: dict) -> dict:
+    # 单应用进程内串行保存，避免相同首次保存标识并发创建，以及配置行互相覆盖。
+    async with _save_lock:
+        return await _save_document(doc)
+
+
+async def _save_document(doc: dict) -> dict:
     await detect_sql_dialect()
     if len(_dumps(doc)) > MAX_DOC_CHARS:
         raise QueryValidationError("月报内容过大")
@@ -200,16 +222,25 @@ async def save_document(doc: dict) -> dict:
     now = _now()
 
     report_id = None
-    if str(doc.get("id") or "").isdigit():
+    client_id = str(doc.get("id") or "")
+    save_key = str(doc.get("saveKey") or (client_id if not client_id.isdigit() else ""))
+    if (client_id and not _SAVE_ID.fullmatch(client_id)) or (save_key and not _SAVE_ID.fullmatch(save_key)):
+        raise QueryValidationError("月报保存标识无效")
+    marker = f"{KIND}:{save_key or uuid.uuid4().hex}"
+    if client_id.isdigit():
         rows = await query_app_schema(
             f"SELECT id FROM t_report_template WHERE id = {int(doc['id'])} AND description LIKE '{KIND}:%' LIMIT 1", limit=1)
+        if not rows:
+            raise QueryValidationError("月报已不存在，请重新打开或另存为新月报")
+        report_id = rows[0]["id"]
+    elif save_key:
+        rows = await query_app_schema(f"SELECT id FROM t_report_template WHERE description = {lit(marker)} LIMIT 1", limit=1)
         report_id = rows[0]["id"] if rows else None
     if report_id:
         await execute_app_schema(
             f"UPDATE t_report_template SET name = {lit(name)}, title = {lit(title)}, content = {lit(_dumps(content))}, "
             f"updated_at = {lit(now)} WHERE id = {report_id}")
     else:
-        marker = f"{KIND}:{uuid.uuid4().hex}"
         await execute_app_schema(
             "INSERT INTO t_report_template (name, title, description, content, status, created_at, updated_at) "
             f"VALUES ({lit(name)}, {lit(title)}, {lit(marker)}, {lit(_dumps(content))}, 'draft', {lit(now)}, {lit(now)})")
@@ -221,7 +252,7 @@ async def save_document(doc: dict) -> dict:
     # 格子：只更新有变化的行，新增缺少的，删除已经不在月报里的。
     existing = {b["block_key"]: b for b in await _all_rows(
         f"SELECT * FROM t_report_block WHERE report_id = {report_id} AND chart_type = '{CELL_TYPE}'")}
-    wanted = set()
+    wanted, new_blocks = set(), []
     for order, item in enumerate(cells):
         cell = dict(item["cell"])
         key = cell["id"]
@@ -241,7 +272,8 @@ async def save_document(doc: dict) -> dict:
                 await execute_app_schema(f"UPDATE t_report_block SET {sets}, updated_at = {lit(now)} WHERE id = {old['id']}")
         else:
             cols = {"report_id": report_id, "block_key": key, "chart_type": CELL_TYPE, **row, "created_at": now, "updated_at": now}
-            await execute_app_schema(f"INSERT INTO t_report_block ({', '.join(cols)}) VALUES ({', '.join(lit(v) for v in cols.values())})")
+            new_blocks.append(list(cols.values()))
+    await _insert_rows("t_report_block", ["report_id", "block_key", "chart_type", "block_no", "block_title", "content_html", "chart_data", "order_no", "created_at", "updated_at"], new_blocks)
     for key, old in existing.items():
         if key not in wanted:
             await execute_app_schema(f"DELETE FROM t_report_config WHERE report_id = {report_id} AND block_id = {old['id']}")
@@ -252,11 +284,13 @@ async def save_document(doc: dict) -> dict:
         f"SELECT id, block_key FROM t_report_block WHERE report_id = {report_id} AND chart_type = '{CELL_TYPE}'")}
     configs = {(c["block_id"], c["section"]): c for c in await _all_rows(
         f"SELECT id, block_id, section, config_text FROM t_report_config WHERE report_id = {report_id}")}
+    pending_configs = []
     for item in cells:
         block_id = ids.get(item["cell"]["id"])
         if block_id is not None:
-            await _upsert_config(configs, report_id, block_id, "prompt", {"prompt": str(item["cell"].get("prompt") or "")})
-    await _upsert_config(configs, report_id, None, "style", {"prompt": style_prompt})
+            await _upsert_config(configs, report_id, block_id, "prompt", {"prompt": str(item["cell"].get("prompt") or "")}, pending_configs)
+    await _upsert_config(configs, report_id, None, "style", {"prompt": style_prompt}, pending_configs)
+    await _insert_rows("t_report_config", ["report_id", "block_id", "section", "config_text", "created_at", "updated_at"], pending_configs)
     return await read_document(report_id)
 
 
