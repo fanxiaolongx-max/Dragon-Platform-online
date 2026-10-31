@@ -112,6 +112,18 @@ TOOLS: list[dict[str, Any]] = [
      "description": "按主键 id 删除应用表的一行；执行前需用户在页面确认，删除前快照写入审计日志。",
      "params": {"table": {"type": "string", "enum": list(APP_TABLES)}, "id": {"type": "integer"}},
      "required": ["table", "id"]},
+    {"name": "report_outline", "title": "查看 AI 月报", "risk": "read",
+     "description": "不传 report_id 时列出全部 AI 月报；传 report_id 返回该月报的章节、格子 id、格子名、宽度和格子提示词。",
+     "params": {"report_id": {"type": "integer"}},
+     "required": []},
+    {"name": "cell_upsert", "title": "新增或修改月报格子", "risk": "write",
+     "description": "给 AI 月报新增格子（不传 cell_id，可传 chapter_id 指定章节）或修改格子（传 cell_id）。可改 prompt（格子提示词）、span（宽度 1-12 栏）。执行前需用户确认；改完后到 AI 月报页面打开该格子即可按新提示词生成。",
+     "params": {"report_id": {"type": "integer"}, "cell_id": {"type": "string"}, "chapter_id": {"type": "string"}, "prompt": {"type": "string"}, "span": {"type": "integer", "minimum": 1, "maximum": 12}},
+     "required": ["report_id"]},
+    {"name": "cell_delete", "title": "删除月报格子", "risk": "danger",
+     "description": "从 AI 月报删除一个格子（连同它的提示词、配方和结果）。执行前需用户确认。",
+     "params": {"report_id": {"type": "integer"}, "cell_id": {"type": "string"}},
+     "required": ["report_id", "cell_id"]},
     {"name": "execute_sql", "title": "原始写 SQL", "risk": "danger",
      "description": "对应用库执行单条 INSERT/UPDATE/DELETE（UPDATE/DELETE 必须带 WHERE）。仅管理员开启后可用，执行前需用户确认。",
      "params": {"sql": {"type": "string"}},
@@ -171,6 +183,8 @@ def build_prompt(tools: list[dict]) -> str:
         "代码块外可以加一句简短说明。页面执行后会把结果作为「工具结果」发回给你，你再继续调用或给出最终回答。\n"
         "可用工具：\n" + "\n".join(lines) + "\n"
         "应用表：" + tables + "。业务库为 netcare（只读，400+ 张运营表）。\n"
+        "AI 月报：每份月报是 t_report_template 一行，每个格子是 t_report_block 一行（block_key 为格子 id），格子提示词在 t_report_config（section='prompt'）。"
+        "查看或修改月报、格子、提示词时优先用 report_outline / cell_upsert / cell_delete，不要直接改这三张表。\n"
         "规则：\n"
         "1. 涉及表名、字段、数量、明细的问题必须先调用工具核实，不得编造表名或数据。\n"
         "2. 先 list_tables / describe_table 确认真实字段，再写 query；统计用 SQL 聚合。\n"
@@ -393,8 +407,59 @@ async def _query(args: dict) -> dict:
             "truncated": cut or len(rows) >= limit, "limit": limit}
 
 
+async def _report_outline(args: dict) -> dict:
+    from app.services import air_service
+    if args.get("report_id") in (None, ""):
+        return {"reports": await air_service.list_documents()}
+    return air_service.outline(await air_service.read_document(args["report_id"]))
+
+
+async def _plan_report(tool: str, args: dict) -> dict:
+    from app.services import air_service
+    report_id = _row_id(args.get("report_id"))
+    doc = await air_service.read_document(report_id)
+    cell_id = str(args.get("cell_id") or "").strip()
+    found = None
+    for chapter in doc["chapters"]:
+        for cell in chapter["cells"]:
+            if cell.get("id") == cell_id:
+                found = (chapter, cell)
+    if cell_id and not found:
+        raise _fail(f"月报 {report_id} 中没有格子 {cell_id}，请先用 report_outline 查看")
+    title = f"AI 月报「{doc['name']}」"
+    if tool == "cell_delete":
+        return {"args": {"report_id": report_id, "cell_id": cell_id},
+                "preview": {"table": "t_report_block", "title": title, "id": cell_id,
+                            "before": {"格子": air_service._cell_title(found[1]), "提示词": found[1].get("prompt", "")}}}
+    clean = {"report_id": report_id}
+    if cell_id:
+        clean["cell_id"] = cell_id
+    chapter_id = str(args.get("chapter_id") or "").strip()
+    if chapter_id and not cell_id:
+        if not any(ch.get("id") == chapter_id for ch in doc["chapters"]):
+            raise _fail(f"章节 {chapter_id} 不存在，请先用 report_outline 查看")
+        clean["chapter_id"] = chapter_id
+    if args.get("prompt") is not None:
+        clean["prompt"] = str(args["prompt"])[:4000]
+    if args.get("span") not in (None, ""):
+        clean["span"] = max(1, min(12, int(args["span"])))
+    if "prompt" not in clean and "span" not in clean:
+        raise _fail("cell_upsert 至少要给 prompt 或 span")
+    if found:
+        before = {"提示词": found[1].get("prompt", ""), "宽度": found[1].get("span", 6)}
+        after = {"提示词": clean.get("prompt", before["提示词"]), "宽度": clean.get("span", before["宽度"])}
+        changes = {k: {"before": before[k], "after": after[k]} for k in before if before[k] != after[k]}
+        if not changes:
+            raise _fail("新值与当前值相同，无需修改")
+        return {"args": clean, "preview": {"table": "t_report_block", "title": title, "id": cell_id, "changes": changes}}
+    return {"args": clean, "preview": {"table": "t_report_block", "title": title + " · 新增格子",
+                                       "after": {"章节": chapter_id or "最后一个章节", "提示词": clean.get("prompt", ""), "宽度": clean.get("span", 6)}}}
+
+
 async def _plan_write(tool: str, args: dict) -> dict:
     """校验写操作并生成预览（不执行）。返回 normalized args + preview。"""
+    if tool in ("cell_upsert", "cell_delete"):
+        return await _plan_report(tool, args)
     if tool == "execute_sql":
         if not raw_write_enabled():
             raise _fail("原始写 SQL 未开启（需要管理员设置 AGENT_ALLOW_RAW_WRITE=true）")
@@ -419,6 +484,14 @@ async def _plan_write(tool: str, args: dict) -> dict:
 
 
 async def _apply_write(tool: str, args: dict, client: str) -> dict:
+    if tool in ("cell_upsert", "cell_delete"):
+        from app.services import air_service
+        if tool == "cell_delete":
+            result = await air_service.delete_cell(args["report_id"], args["cell_id"])
+        else:
+            result = await air_service.upsert_cell(args["report_id"], args.get("cell_id"), args.get("chapter_id"), args.get("prompt"), args.get("span"))
+        _audit(tool, args, result.get("deleted"), {"cell_id": result.get("cell_id")}, client)
+        return {"affected": 1, **result}
     if tool == "execute_sql":
         affected = await execute_app_schema(args["sql"])
         _audit(tool, args, None, {"affected": affected}, client)
@@ -461,7 +534,7 @@ async def execute(tool: str, args: Any, confirm_token: str | None = None, client
         raise _fail(f"{tool} 缺少参数：{', '.join(missing)}")
     try:
         if spec["risk"] == "read":
-            handler = {"list_tables": _list_tables, "describe_table": _describe_table, "query": _query}[spec["name"]]
+            handler = {"list_tables": _list_tables, "describe_table": _describe_table, "query": _query, "report_outline": _report_outline}[spec["name"]]
             return {"status": "ok", "tool": tool, "risk": "read", "result": await handler(args)}
         plan = await _plan_write(spec["name"], args)
         if not confirm_token:

@@ -9,6 +9,7 @@ import httpx
 from app.config import settings
 from app.core.exceptions import DatabaseError
 from app.core.logger import logger
+from app.utils import sql_helper
 
 
 # --------------------------------------------------------------------
@@ -162,3 +163,21 @@ async def query_business(sql: str, limit: int = 100) -> list[dict]:
     if resp.get("code") != 0:
         raise DatabaseError(resp.get("message", "基座查询失败"))
     return resp.get("data", {}).get("rows", [])
+
+
+_dialect_checked = False
+
+
+async def detect_sql_dialect() -> None:
+    """探测应用库是否把反斜杠当转义符（MySQL 是，SQLite 否），只需成功探测一次。"""
+    global _dialect_checked
+    if _dialect_checked:
+        return
+    try:
+        rows = await query_app_schema("SELECT 'a\\\\b' AS v", limit=1)
+        value = str(next(iter(rows[0].values()))) if rows else ""
+        sql_helper.set_backslash_escapes(len(value) == 3)
+        _dialect_checked = True
+        logger.info(f"应用库字符串反斜杠转义：{'开启' if len(value) == 3 else '关闭'}")
+    except Exception as exc:
+        logger.warning(f"应用库方言探测失败，稍后写入前重试：{exc}")

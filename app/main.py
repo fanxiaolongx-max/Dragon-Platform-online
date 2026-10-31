@@ -10,8 +10,8 @@ from fastapi.responses import FileResponse, HTMLResponse
 from app.config import settings
 from app.core.logger import logger
 from app.core.exceptions import register_exception_handlers
-from app.routers import health, report, data_element, data_source, data_query, table_map, agent
-from app.db import close_client
+from app.routers import health, report, data_element, data_source, data_query, table_map, agent, air
+from app.db import close_client, detect_sql_dialect
 
 logging.getLogger("uvicorn").setLevel(logging.INFO)
 
@@ -48,11 +48,12 @@ def create_app() -> FastAPI:
     app.include_router(data_query.router, prefix="/api")
     app.include_router(table_map.router, prefix="/api")
     app.include_router(agent.router, prefix="/api")
+    app.include_router(air.router, prefix="/api")
 
     # 挂载静态文件目录（基座要求 static/ 可访问）
     if os.path.isdir(STATIC_DIR):
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-        for sub in ("css", "js", "vendor"):
+        for sub in ("css", "js", "vendor", "air", "shared"):
             sub_dir = os.path.join(STATIC_DIR, sub)
             if os.path.isdir(sub_dir):
                 app.mount(f"/{sub}", StaticFiles(directory=sub_dir), name=sub)
@@ -65,6 +66,7 @@ def create_app() -> FastAPI:
     # 启动事件
     @app.on_event("startup")
     async def startup_event():
+        await detect_sql_dialect()
         logger.info(f"{settings.APP_NAME} v{settings.APP_VERSION} 启动完成")
 
     @app.on_event("shutdown")
@@ -72,18 +74,19 @@ def create_app() -> FastAPI:
         await close_client()
         logger.info(f"{settings.APP_NAME} 已关闭，基座客户端连接已释放")
 
-    # 根路径（主页）：唯一前端页面 static/index.html（报告工作台 + Dragon Claw 助理）
+    # 主页：AI 月报；开发者模式：API 调试台（数据链路 / 源表直查 / 接口调试）
     index_file = os.path.join(STATIC_DIR, "index.html")
+    dev_file = os.path.join(STATIC_DIR, "dev.html")
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/index.html", response_class=HTMLResponse, include_in_schema=False)
     async def root():
         return FileResponse(index_file)
 
-    # 旧链接 /api-test 与 /index.html 指向同一页面
+    @app.get("/dev", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/api-test", response_class=HTMLResponse, include_in_schema=False)
-    @app.get("/index.html", response_class=HTMLResponse, include_in_schema=False)
-    async def index_alias():
-        return FileResponse(index_file)
+    async def dev_page():
+        return FileResponse(dev_file)
 
     return app
 

@@ -1,6 +1,15 @@
 # -*- coding: utf-8 -*-
 """SQL工具函数"""
 
+# MySQL（内网基座）默认把字符串里的反斜杠当转义符，SQLite（本地平台）不会；
+# 由 app.db.detect_sql_dialect() 启动时探测后设置，写入代码、正则等含反斜杠的内容才不会被改坏。
+BACKSLASH_ESCAPES = False
+
+
+def set_backslash_escapes(enabled: bool) -> None:
+    global BACKSLASH_ESCAPES
+    BACKSLASH_ESCAPES = bool(enabled)
+
 
 def format_sql_value(value):
     """
@@ -26,5 +35,8 @@ def format_sql_value(value):
         return str(value)
     else:
         # 字符串类型,转义单引号并加引号
-        escaped = str(value).replace("'", "''")
+        escaped = str(value)
+        if BACKSLASH_ESCAPES:
+            escaped = escaped.replace("\\", "\\\\")
+        escaped = escaped.replace("'", "''")
         return f"'{escaped}'"

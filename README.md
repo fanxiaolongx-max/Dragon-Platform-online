@@ -5,7 +5,7 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.3.0`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.4.0`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
@@ -16,6 +16,7 @@
 - 📊 **运营报告自动生成**：支持月报、周报、质量运营大屏所需的数据要素提取、维度透视与自动化排版渲染。
 - 🔎 **441 张 NetCare 业务表直查与映射**：内置《运营指标-索引目录》与业务库落地表完整映射，支持上游源表自动转换为落地表，提供字段白名单校验、多条件组合查询与快速预览。
 - ⚡ **高性能异步架构**：基于 FastAPI + Starlette + Uvicorn 异步驱动，支持单进程高并发与标准 OpenAPI 文档（`/docs` 与 `/redoc`）。
+- 📝 **AI 月报（主页）**：移植自 Dragon Platform 的 AI 月报编辑器。每个格子用对话说明要展示什么，AI 直接查业务库表结构、写出按月运行的 SQL 配方，图表和数字每月从业务库实时取数，不再需要导入数据；月报、格子和提示词都存进应用库，可在开发者模式或助理对话里增删改（见下文「AI 月报」）。
 - 🐉 **Dragon Claw 助理 + 数据能力**：页面右侧常驻 AI 助理，可通过对话查询业务库 / 应用库并做统计；新增、修改、删除应用表前展示变更预览，用户确认后才执行，并记录审计日志（见下文「Dragon Claw 数据能力」）。
 - 💻 **Dragon Platform 在线 IDE 深度适配**：
   - 代码在平台内实时热编辑，自带现代深色代码高亮、多 Tab 编辑与优雅拟态弹窗。
@@ -43,19 +44,24 @@ Dragon-Platform-online/
 │   │   ├── data_source.py      # 多数据源配置与切换
 │   │   ├── data_query.py       # 业务库 SQL 动态查询与透视
 │   │   ├── table_map.py        # 441 张源表与业务表映射字典
-│   │   └── agent.py            # Dragon Claw 能力清单与受控执行器 (/api/agent)
+│   │   ├── agent.py            # Dragon Claw 能力清单与受控执行器 (/api/agent)
+│   │   └── air.py              # AI 月报：文档读写、格子 / 提示词增删改、配方取数 (/api/air)
 │   ├── schemas/                # Pydantic 输入输出模型
-│   ├── services/               # 核心业务逻辑服务（agent_service.py：工具协议 / SQL 守卫 / 写入确认 / 审计）
+│   ├── services/               # 核心业务逻辑服务（agent_service.py：工具协议 / SQL 守卫 / 写入确认 / 审计；air_service.py：AI 月报存储与按月取数）
 │   └── utils/                  # 辅助工具函数
 ├── static/                     # 前端静态资源
-│   ├── index.html              # 唯一前端页面：数据链路 / 源表直查 / 接口调试 / Dragon Claw 助理（自包含，无外部依赖）
+│   ├── index.html              # 主页：AI 月报（/）
+│   ├── dev.html                # 开发者模式：数据链路 / 源表直查 / 接口调试（/dev，旧地址 /api-test）
+│   ├── air/                    # AI 月报前端（移植自平台）+ ai-backend.js（浏览器端 AI 后端，经 ADCChat 调模型）
+│   ├── shared/                 # 两个页面共用：Dragon Claw 助理浮窗、会话调度、线性图标
+│   ├── vendor/echarts.min.js   # 图表库（内网离线可用）
 │   └── data/                   # 表映射与全表目录（table_map 路由读取）
 ├── db/                         # 应用本地数据与 SQLite 存储
 ├── logs/                       # 运行日志输出目录
 ├── requirements.txt            # Python 依赖清单
 ├── run.py                      # 本地独立启动脚本 (uvicorn)
 ├── _platform_host.py           # Dragon Platform 宿主反向代理前缀适配层
-├── AiOps-Report.version        # 版本标识文件 (1.3.0)
+├── AiOps-Report.version        # 版本标识文件 (1.4.0)
 └── README.md                   # 项目说明文档
 ```
 
@@ -85,7 +91,7 @@ pip install -r requirements.txt
 
 ```env
 APP_NAME=AiOps-Report
-APP_VERSION=1.3.0
+APP_VERSION=1.4.0
 PORT=5600
 WORKERS=1
 RELOAD=true
@@ -99,7 +105,8 @@ python run.py
 ```
 
 服务启动后，默认监听在 `http://127.0.0.1:5600`：
-- **工作台主页**：[http://127.0.0.1:5600/](http://127.0.0.1:5600/)（旧地址 `/api-test`、`/index.html` 指向同一页面）
+- **AI 月报（主页）**：[http://127.0.0.1:5600/](http://127.0.0.1:5600/)
+- **开发者模式（API 调试台）**：[http://127.0.0.1:5600/dev](http://127.0.0.1:5600/dev)（旧地址 `/api-test` 同一页面）
 - **Swagger 接口文档**：[http://127.0.0.1:5600/docs](http://127.0.0.1:5600/docs)
 - **健康探测**：[http://127.0.0.1:5600/health](http://127.0.0.1:5600/health)
 
@@ -131,6 +138,9 @@ python run.py
 | **维度透视** | `POST` | `/api/data/pivot` | 对指定指标进行行列交叉分组与聚合透视分析 |
 | **报告生成** | `POST` | `/api/report/generate` | 传入时间周期与指标维度，自动化组装并生成分析报告 |
 | **要素管理** | `GET` / `POST` | `/api/data-element/*` | 运营报告核心要素的增删改查与沉淀 |
+| **AI 月报** | `GET` / `POST` / `DELETE` | `/api/air/documents[/{id}]` | 月报列表、完整文档、整份保存、删除 |
+| **月报格子** | `POST` / `PUT` / `DELETE` | `/api/air/documents/{id}/cells[/{cell}]` | 新增 / 修改（提示词、宽度、高度）/ 删除格子 |
+| **配方取数** | `POST` | `/api/air/run-data` | 按报告月份执行配方里的 SQL 来源 |
 | **AI 能力清单** | `GET` | `/api/agent/capabilities` | Dragon Claw 可调用的工具、数据源与协议提示词 |
 | **AI 受控执行** | `POST` | `/api/agent/execute` | 执行一个工具；写操作先返回预览与一次性确认令牌 |
 
@@ -156,6 +166,16 @@ python run.py
 安全边界全部在服务端强制：业务库只读；只读 SQL 拒绝多语句与写/DDL 关键字；写入只作用于应用表白名单且禁止改表结构；确认令牌绑定工具与参数、10 分钟有效、只能使用一次（多实例部署时设置相同的 `AGENT_CONFIRM_SECRET`）；写操作以 `[agent-audit]` 记录到应用日志（含变更前快照，便于人工回滚）。助理输入框下方的「数据能力」开关可关闭本功能，关闭后只做普通对话。
 
 ---
+
+## 📝 AI 月报
+
+主页就是 AI 月报编辑器（移植自 Dragon Platform `/monthly`，界面、格子对话、提示词总结、配方编译、沙箱运行、章节样式、整体风格、导出等行为一致）。区别：
+
+- **数据直接来自业务库**：格子的配方数据来源是只读 SQL（`{"kind":"sql","source":"netcare"|"app","sql":"…","monthOffset":0}`），时间条件用占位符 `{{month}}` `{{yyyymm}}` `{{month_start}}` `{{month_end}}` `{{next_month_start}}` `{{prev_month}}` `{{year}}` `{{month_num}}`。切换报告月份时服务端按新月份执行 SQL、沙箱重新计算，不调用 AI；文字总结点「更新总结」重写。格子对话里 AI 用 `list_tables` / `describe_table` / `query` 查表结构和样本，编译后先按报告月份试跑 SQL，出错会交回 AI 修正。
+- **AI 在浏览器里调用**：内网只有嵌入的 ADC 网页对话，`static/air/ai-backend.js` 把平台服务端的对话与编译逻辑搬到页面里，经 Dragon Claw 会话调度调用 ADCChat；工具调用用 `{"tool":…,"args":…}` JSON 文本协议。每次 AI 请求新开一个 ADC 会话，互不串上下文；新建会话失败时沿用当前会话并声明是新任务。格子对话右上角「调用记录」可查看每次发给模型的内容和返回。
+- **存储在应用库**：一份月报 = `t_report_template` 一行（`description` 以 `ai-report:` 开头，`content` 为骨架 JSON）；一个格子 = `t_report_block` 一行（`chart_type='ai-cell'`，`block_key` 为格子 id，`content_html` 为本月 HTML，`chart_data` 为配方 / 对话 / 结果）；格子提示词 = `t_report_config` 的 `section='prompt'` 行，整体风格提示词 = `section='style'` 且 `block_id` 为空的行。提示词以配置行为准，可在开发者模式「AI 月报」接口或 Dragon Claw（`report_outline` / `cell_upsert` / `cell_delete`，写入需确认）里改，下次打开月报生效；其它 section 的配置行保存时不会被动到，可用于以后扩展的参数。
+- **方言**：启动时探测应用库是否把反斜杠当转义符（MySQL 是、SQLite 否），写入配方代码等含反斜杠的内容时按需转义。
+- 暂不支持：LOGO 图片对话与图库、Outlook MSG 导出（HTML 与打印 / PDF 可用）。
 
 ## 🤝 协作与贡献
 
