@@ -5,7 +5,7 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.4.5`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.4.6`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
@@ -124,7 +124,7 @@ Dragon Claw 浮窗在首次打开、恢复历史位置、拖拽、调整宽高�
 
 ### 方式二：在 Dragon Platform 中托管运行
 
-从 [Releases](https://github.com/fanxiaolongx-max/Dragon-Platform-online/releases/latest) 下载 **`AiOps-Report-platform.zip`**，在目标平台首页点击「导入 HTML / ZIP / SKILL」并选择该文件。平台会识别为 Python 应用，安装依赖并启动；首次使用前由管理员显式部署应用表。同名应用可选择更新，更新时保留目标应用数据库。请下载 Release 的附件 ZIP。
+从 [Releases](https://github.com/fanxiaolongx-max/Dragon-Platform-online/releases/latest) 下载 **`AiOps-Report-v<version>-platform.zip`**，在目标平台首页点击「导入 HTML / ZIP / SKILL」并选择该文件。平台会识别为 Python 应用，安装依赖并启动；首次使用前由管理员显式部署应用表。同名应用可选择更新，更新时保留目标应用数据库。请下载 Release 的附件 ZIP。
 
 本服务已无缝适配 **Dragon Platform** 托管体系：
 
@@ -147,7 +147,7 @@ AIR 是接口前缀，不是新增的数据表：月报文档复用 `t_report_te
 | 数字人基座（MySQL） | DBA 在分配的 `APP_SCHEMA` 中手动执行 `db/init.sql` | DBA 审阅并手动执行 `db/upgrade.sql` | 应用只经基座 REST API 读写；不发 DDL |
 | Dragon Platform 基座契约（SQLite） | 管理员在右上角运维菜单预览并确认「初始化应用表」 | 预览并确认「升级应用表」 | 导入、启动、重启均不自动补表；写 API 只允许受限 DML |
 
-**先更新 Dragon Platform，再导入本版 `AiOps-Report-platform.zip`。** 平台包声明 `databaseContract: "digital-human"`；宿主必须支持此契约，新版 AiOps 不会在旧宿主上静默按宽松模式运行。已有应用更新保留数据库；本版升级 SQL 仅幂等补齐五张表，不重放种子、不删除或重写已有月报。新初始化的两种数据库采用相同的来源/元素种子；SQLite 不再额外插入独有的示例报告，初始化脚本重复执行保留已存在的业务键。
+**先更新 Dragon Platform，再导入本版 `AiOps-Report-v<version>-platform.zip`。** 平台包声明 `databaseContract: "digital-human"`；宿主必须支持此契约，新版 AiOps 不会在旧宿主上静默按宽松模式运行。已有应用更新保留数据库；本版升级 SQL 仅幂等补齐五张表，不重放种子、不删除或重写已有月报。新初始化的两种数据库采用相同的来源/元素种子；SQLite 不再额外插入独有的示例报告，初始化脚本重复执行保留已存在的业务键。
 
 业务数据仍需在目标环境配置：应用表使用 `datasourceId + schema`，业务表只使用配置的 NetCare `datasourceName`，没有自动回退到平台 `report.db`。每次查询最多 1000 行；AIR 内部文档、格子、配置按 LIMIT/OFFSET 分页读取，超过单页也不静默截断。禁止通过查询接口的 WITH 隐藏写入。写接口只接受单条 INSERT / UPDATE / DELETE，UPDATE / DELETE 必须有外层 WHERE，不回传自增 ID；应用按业务键反查。
 
@@ -159,16 +159,16 @@ AIR 是接口前缀，不是新增的数据表：月报文档复用 `t_report_te
 
 ## 📦 推送后自动打包与发布
 
-每次推送到 `main`（包括平台在线 IDE 的 Push）都会运行 [Package AiOps-Report](https://github.com/fanxiaolongx-max/Dragon-Platform-online/actions/workflows/release.yml)，通过打包测试及校验后自动发布 [GitHub Release](https://github.com/fanxiaolongx-max/Dragon-Platform-online/releases)。无需手动改版本号或打 Tag；Release Tag 为 `build-v<AiOps-Report.version>-<提交 SHA 前 12 位>`，同一版本的多次推送各自保留一个构建。也可在 Actions 中选 `main`，点击 Run workflow 手动构建；重复运行同一提交保留已发布附件。PR 只验证打包并保存 Actions 附件。
+每次推送到 `main`（包括平台在线 IDE 的 Push）都会运行 [Package AiOps-Report](https://github.com/fanxiaolongx-max/Dragon-Platform-online/actions/workflows/release.yml)，通过打包测试及校验后自动发布 [GitHub Release](https://github.com/fanxiaolongx-max/Dragon-Platform-online/releases)。每次构建的 ZIP 文件名均自动带上应用版本号：
 
 | Release 附件 | 用途 |
 | --- | --- |
-| `AiOps-Report-base.zip` | 数字人基座部署包；ZIP 根目录直接放置 `run.py`、`requirements.txt`、`app/`、`static/`、版本文件与初始化 SQL，无额外顶级目录 |
-| `AiOps-Report-platform.zip` | Dragon Platform 导入包；在上述代码上增加 `platform-app.json`，明确使用 `app.main:create_app` 工厂入口、ASGI 和 `/health` 健康检查 |
+| `AiOps-Report-v<version>-base.zip` | 数字人基座部署包；ZIP 根目录直接放置 `run.py`、`requirements.txt`、`app/`、`static/`、版本文件与初始化 SQL，无额外顶级目录 |
+| `AiOps-Report-v<version>-platform.zip` | Dragon Platform 导入包；在上述代码上增加 `platform-app.json`，明确使用 `app.main:create_app` 工厂入口、ASGI 和 `/health` 健康检查 |
 | `SHA256SUMS` | 两个 ZIP 的 SHA-256 校验值 |
-| `release.json` | 本次构建的应用版本、完整源码提交与 Release Tag |
+| `release.json` | 本次构建的应用版本、完整源码提交、Release Tag 及产物包文件名 |
 
-基座侧上传 `AiOps-Report-base.zip`，沿用 `python run.py` 启动方式，按目标基座配置应用身份、数据源和连接地址；MySQL 初始化使用 `db/init.sql`。Dragon Platform 使用 `db/init.sqlite.sql`。基座包按当前源码的部署约定生成，真实内网基座的上传校验和运行结果仍需在目标环境验收。
+基座侧上传 `AiOps-Report-v<version>-base.zip`，沿用 `python run.py` 启动方式，按目标基座配置应用身份、数据源和连接地址；MySQL 初始化使用 `db/init.sql`。Dragon Platform 使用 `db/init.sqlite.sql`。基座包按当前源码的部署约定生成，真实内网基座的上传校验和运行结果仍需在目标环境验收。
 
 包从 Git 已跟踪的应用源码生成，保留 `static/data/` 的表映射与目录文件；排除 `.env`、凭据文件、运行数据库、日志、虚拟环境、缓存及平台生成的 `_platform_host.py`。不迁移已有报告、用户数据或目标平台的模型与连接配置。两个包均不附带 wheels：目标环境需有 Python，并能通过网络或内网 pip 镜像安装 `requirements.txt`；完全离线环境需另行准备匹配目标系统、CPU 与 Python 版本的依赖。
 
@@ -177,7 +177,7 @@ AIR 是接口前缀，不是新增的数据表：月报文档复用 `t_report_te
 ```bash
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 python3 scripts/build_release.py
-# 输出 dist/AiOps-Report-base.zip、dist/AiOps-Report-platform.zip 等附件
+# 输出 dist/AiOps-Report-v<version>-base.zip、dist/AiOps-Report-v<version>-platform.zip 等附件
 ```
 
 发布流程使用 GitHub Actions 自带的 `GITHUB_TOKEN`，仅发布 Job 申请 `contents: write`，无需配置额外发布 Token。若仓库策略禁止 Actions 写入 Release，需由仓库管理员调整对应权限。实现见 [release.yml](.github/workflows/release.yml) 与 [build_release.py](scripts/build_release.py)。

@@ -81,8 +81,11 @@ def build(root, output):
         raise ValueError("AiOps-Report.version must contain a release version, e.g. 1.4.0")
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
     output.mkdir(parents=True, exist_ok=True)
-    base = output / "AiOps-Report-base.zip"
-    platform = output / "AiOps-Report-platform.zip"
+    v_tag = f"v{version}" if not version.startswith("v") else version
+    base_name = f"AiOps-Report-{v_tag}-base.zip"
+    platform_name = f"AiOps-Report-{v_tag}-platform.zip"
+    base = output / base_name
+    platform = output / platform_name
     write_zip(base, files)
     manifest = {
         "name": "AiOps-Report", "version": version,
@@ -95,7 +98,13 @@ def build(root, output):
         f"{hashlib.sha256(file.read_bytes()).hexdigest()}  {file.name}\n"
         for file in [base, platform]
     ), encoding="utf-8")
-    metadata = {"version": version, "commit": commit, "tag": f"build-v{version}-{commit[:12]}"}
+    metadata = {
+        "version": version,
+        "commit": commit,
+        "tag": f"build-v{version}-{commit[:12]}",
+        "basePackage": base_name,
+        "platformPackage": platform_name,
+    }
     (output / "release.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     return metadata
 

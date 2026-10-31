@@ -81,13 +81,15 @@ jobs:
           set -euo pipefail
           tag=$(jq -r .tag dist/release.json)
           version=$(jq -r .version dist/release.json)
+          base_pkg=$(jq -r '.basePackage // ("AiOps-Report-v" + .version + "-base.zip")' dist/release.json)
+          platform_pkg=$(jq -r '.platformPackage // ("AiOps-Report-v" + .version + "-platform.zip")' dist/release.json)
           cat > notes.md <<EOF
           自动构建：AiOps-Report ${version}
           源码提交：${SOURCE_COMMIT}
 
-          - **AiOps-Report-base.zip**：数字人基座部署包，根目录含 run.py、requirements.txt、app/、static/ 与初始化 SQL。
-          - **AiOps-Report-platform.zip**：Dragon Platform 导入包，额外含 platform-app.json，入口 app.main:create_app，健康检查 /health。在首页「导入 HTML / ZIP / SKILL」选择此文件。
-          - **SHA256SUMS**：两个 ZIP 的 SHA-256 校验值；release.json 记录源码提交及版本。
+          - **${base_pkg}**：数字人基座部署包，根目录含 run.py、requirements.txt、app/、static/ 与初始化 SQL。
+          - **${platform_pkg}**：Dragon Platform 导入包，额外含 platform-app.json，入口 app.main:create_app，健康检查 /health。在首页「导入 HTML / ZIP / SKILL」选择此文件。
+          - **SHA256SUMS**：ZIP 的 SHA-256 校验值；release.json 记录源码提交及版本。
 
           数据库部署：基座由 DBA 手动执行 db/init.sql / db/upgrade.sql；平台包启用严格基座契约，须先更新宿主平台，再由管理员从运维菜单预览并部署 SQLite 脚本。启动和业务请求不会自动补表。
 
@@ -107,6 +109,6 @@ jobs:
             gh release create "$tag" --target "$SOURCE_COMMIT" --draft \
               --title "AiOps-Report ${version} · ${SOURCE_COMMIT:0:12}" --notes-file notes.md
           fi
-          gh release upload "$tag" dist/AiOps-Report-base.zip dist/AiOps-Report-platform.zip \
+          gh release upload "$tag" "dist/${base_pkg}" "dist/${platform_pkg}" \
             dist/SHA256SUMS dist/release.json --clobber
           gh release edit "$tag" --draft=false --latest --notes-file notes.md

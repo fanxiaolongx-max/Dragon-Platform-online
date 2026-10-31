@@ -39,10 +39,12 @@ class ReleaseTests(unittest.TestCase):
     def test_upload_layout_manifest_and_checksum(self):
         metadata = release.build(self.root, self.output)
         self.assertEqual(metadata["version"], "1.4.0")
-        with zipfile.ZipFile(self.output / "AiOps-Report-base.zip") as base:
+        base_pkg = metadata.get("basePackage", "AiOps-Report-v1.4.0-base.zip")
+        platform_pkg = metadata.get("platformPackage", "AiOps-Report-v1.4.0-platform.zip")
+        with zipfile.ZipFile(self.output / base_pkg) as base:
             self.assertTrue(release.REQUIRED <= set(base.namelist()))
             self.assertNotIn("platform-app.json", base.namelist())
-        with zipfile.ZipFile(self.output / "AiOps-Report-platform.zip") as platform:
+        with zipfile.ZipFile(self.output / platform_pkg) as platform:
             manifest = json.loads(platform.read("platform-app.json"))
             self.assertEqual(manifest["entry"], "app.main:create_app")
             self.assertTrue(manifest["factory"])
@@ -54,9 +56,9 @@ class ReleaseTests(unittest.TestCase):
         for line in (self.output / "SHA256SUMS").read_text().splitlines():
             expected, name = line.split("  ")
             self.assertEqual(hashlib.sha256((self.output / name).read_bytes()).hexdigest(), expected)
-        before = (self.output / "AiOps-Report-platform.zip").read_bytes()
+        before = (self.output / platform_pkg).read_bytes()
         release.build(self.root, self.output)
-        self.assertEqual(before, (self.output / "AiOps-Report-platform.zip").read_bytes())
+        self.assertEqual(before, (self.output / platform_pkg).read_bytes())
 
     def test_tracked_runtime_secrets_excluded_and_static_data_preserved(self):
         rejected = [".env", "app/.env.production", "app/private.key", "static/token.json",
@@ -66,8 +68,9 @@ class ReleaseTests(unittest.TestCase):
             self.put(name, "fixture")
         self.track()
         self.put("app/untracked.py", "local only")
-        release.build(self.root, self.output)
-        with zipfile.ZipFile(self.output / "AiOps-Report-platform.zip") as archive:
+        metadata = release.build(self.root, self.output)
+        platform_pkg = metadata.get("platformPackage", f"AiOps-Report-v{metadata['version']}-platform.zip")
+        with zipfile.ZipFile(self.output / platform_pkg) as archive:
             self.assertFalse(set(rejected) & set(archive.namelist()))
             self.assertNotIn("app/untracked.py", archive.namelist())
             self.assertIn("static/data/table_map.json", archive.namelist())
