@@ -202,7 +202,7 @@
     function normalize(input){
         if(!input||typeof input!=='object')invalid('Invalid report');
         const chapters=(Array.isArray(input.chapters)?input.chapters:[]).slice(0,LIMITS.chapters).map(chapter);
-        return {version:1,id:typeof input.id==='string'&&/^[-\w]{1,80}$/.test(input.id)?input.id:'',name:str(input.name,LIMITS.name).trim()||'AI 月报',reportMonth:validMonth(input.reportMonth)?input.reportMonth:'',template:normalizeTemplate(input.template),style:normalizeStyle(input.style),chapters:chapters.length?chapters:[chapter({title:bilingual('整体情况','Overview'),cells:[cell()]})],updatedAt:str(input.updatedAt,40)};
+        return {version:1,reportKind:['copy','history'].includes(input.reportKind)?input.reportKind:'primary',id:typeof input.id==='string'&&/^[-\w]{1,80}$/.test(input.id)?input.id:'',name:str(input.name,LIMITS.name).trim()||'AI 月报',reportMonth:validMonth(input.reportMonth)?input.reportMonth:'',template:normalizeTemplate(input.template),style:normalizeStyle(input.style),chapters:chapters.length?chapters:[chapter({title:bilingual('整体情况','Overview'),cells:[cell()]})],updatedAt:str(input.updatedAt,40)};
     }
     // The existing monthly template keeps its header, meta fields, chapter titles and footer; its old components are dropped.
     function fromLegacyTemplate(legacy,reportMonth=''){

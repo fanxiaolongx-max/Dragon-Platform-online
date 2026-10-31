@@ -9,6 +9,7 @@ const requests = [], errors = [];
 const prefix = '/digital-human/dh/fixture-app/';
 let failSave=false, failList=false;
 const saves=[];
+let monthMode=false;const monthDocs=new Map();
 let executionFailure=null, htmlFallback=false;
 const adc = `window.ADCChat={configured:true,busy:false,environment:'Fixture',newSession:async()=> 'fixture',stop(){},ask:async(_q,o)=>o.onUpdate('验证回答。\\n\\n\`\`\`js\\nconst answer = 2;\\n\`\`\`')};`;
 const server = http.createServer((req, res) => {
@@ -23,6 +24,16 @@ const server = http.createServer((req, res) => {
     res.setHeader('x-request-id','fixture-error-123');
     res.setHeader('Content-Type',executionFailure.raw?'text/html':'application/json');
     res.end(executionFailure.raw||JSON.stringify(executionFailure.json)); return;
+  }
+  if(monthMode && url.startsWith('/api/air/documents')){
+    const send=data=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({code:0,data}));};
+    if(req.method==='POST'){
+      let body='';req.on('data',c=>body+=c);req.on('end',()=>{
+        const doc=JSON.parse(body);saves.push(doc);doc.id=doc.id||String(200+monthDocs.size);doc.reportKind=doc.saveAs?'copy':doc.reportKind||'primary';monthDocs.set(doc.id,doc);send(doc);
+      });return;
+    }
+    if(url==='/api/air/documents')send([...monthDocs.values()].map(d=>({id:d.id,name:d.name,reportMonth:d.reportMonth,reportKind:d.reportKind,isDefault:d.reportKind==='primary'})));
+    else send(monthDocs.get(url.split('/').pop()));return;
   }
   if (url === '/api/air/documents' && req.method === 'POST') {
     let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
@@ -88,6 +99,36 @@ async function saveFlow(page,origin){
   assert(await save.isDisabled(),'List refresh failure does not undo successful save');
   failList=false;
   console.log('PASS: duplicate-save guard, stable retry key, edits during save, and successful save with failed list refresh.');
+}
+async function monthFlow(page,origin){
+  monthMode=true;
+  const base=JSON.parse(fs.readFileSync(path.join(root,'static/air/default-template.json'),'utf8'));
+  monthDocs.set('101',{...base,id:'101',reportMonth:'2026-10',reportKind:'primary'});
+  monthDocs.set('102',{...base,id:'102',reportMonth:'2026-10',reportKind:'history'});
+  await page.goto(origin+'/');
+  await page.locator('#airReport h1').waitFor();
+  if(await page.locator('#aiBar').isVisible())await page.locator('#aiBarClose').click();
+  await page.evaluate(()=>document.querySelector('[data-air="new"]').click());
+  await page.locator('#airStatus').filter({hasText:'已打开该月份已有的月报'}).waitFor();
+  assert.equal(monthDocs.size,2,'New in same month must open existing report');
+  assert.equal(await page.locator('#airReportList > button').count(),1);
+  assert.equal(await page.locator('#airReportList details button').count(),1,'Legacy duplicate stays accessible as history');
+  await page.locator('#airMonth').fill('2026-11');await page.locator('#airMonth').dispatchEvent('change');
+  await page.waitForFunction(()=>document.querySelector('#airMonth').value==='2026-11'&&document.querySelector('[data-air="save"]').disabled===false);
+  await page.locator('[data-air="save"]').click();
+  await page.locator('#airStatus').filter({hasText:'已保存到服务器'}).waitFor();
+  assert.equal(monthDocs.size,3);
+  assert.equal(monthDocs.get('101').reportMonth,'2026-10','Changing month cannot overwrite October');
+  await page.locator('#airMonth').fill('2026-10');await page.locator('#airMonth').dispatchEvent('change');
+  await page.locator('#airStatus').filter({hasText:'已打开该月份已有的月报'}).waitFor();
+  await page.evaluate(()=>document.querySelector('[data-air="copy"]').click());
+  await page.locator('.air-dlg input').waitFor();
+  await page.locator('.air-dlg button[data-v="yes"]').click();
+  await page.locator('#airStatus').filter({hasText:'已保存到服务器'}).waitFor();
+  assert.equal(monthDocs.size,4,'Explicit save as adds a copy');
+  assert.equal([...monthDocs.values()].filter(d=>d.reportKind==='copy').length,1);
+  assert.match(await page.locator('#airReportName').textContent(),/副本/);
+  console.log('PASS: one default per month, existing-month navigation, preserved October, explicit save-as copy, accessible legacy history.');
 }
 let browser;
 async function contained(page, selector = '#aiBar') {
@@ -324,6 +365,7 @@ async function assistantFeedback(page){
   htmlFallback = false;
   assert(!requests.some(url => /\/dev(?:\?|$)/.test(url)), 'Developer mode must not navigate to /dev');
   await saveFlow(page,origin);
+  await monthFlow(page,origin);
   assert.deepEqual(errors, []);
   console.log('PASS: restored geometry, four-edge dragging, both resize handles, dark buttons, iframe zoom, viewport resizing, visual viewport zoom, modal state/focus, root and prefixed API paths, sandboxed embedding.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => { await browser?.close(); server.close(); });

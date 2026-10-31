@@ -85,8 +85,10 @@
     }
     function toolbar(){
         $('#airMonth').value=state.doc.reportMonth;
-        $('#airReportName').textContent=state.doc.name;
-        $('#airReportList').innerHTML=state.reports.map(item=>`<button type="button" data-open="${esc(item.id)}" aria-current="${item.id===state.doc.id}"><span>${esc(item.name)}</span><small>${esc(item.reportMonth)}</small></button>`).join('')||`<p>${t('还没有保存的月报','No saved reports yet')}</p>`;
+        $('#airReportName').textContent=state.doc.name+(state.doc.reportKind==='copy'?t(' · 副本',' · Copy'):state.doc.reportKind==='history'?t(' · 历史记录',' · History'):'');
+        const reportEntry=item=>`<button type="button" data-open="${esc(item.id)}" aria-current="${item.id===state.doc.id}"><span>${esc(item.name)}${item.reportKind==='copy'?` · ${t('副本','Copy')}`:item.reportKind==='history'?` · ${t('历史记录','History')}`:''}</span><small>${esc(item.reportMonth)}</small></button>`;
+        const history=state.reports.filter(item=>item.reportKind==='history');
+        $('#airReportList').innerHTML=state.reports.filter(item=>item.reportKind!=='history').map(reportEntry).join('')+(history.length?`<details><summary>${t('同月历史记录','Earlier records')}（${history.length}）</summary>${history.map(reportEntry).join('')}</details>`:'')||`<p>${t('还没有保存的月报','No saved reports yet')}</p>`;
         const stale=staleCells().length,narratives=$('#airNarratives');
         narratives.hidden=!stale||state.preview;narratives.textContent=t(`更新总结（${stale}）`,`Update summaries (${stale})`);
         $('[data-air=preview]').textContent=state.preview?t('返回编辑','Edit'):t('预览','Preview');
@@ -1008,7 +1010,15 @@
     async function loadReports(){try{state.reports=await API.get('/api/ai-report/documents');return true;}catch(error){status(error.message);return false;}}
     async function confirmDiscard(){if(state.saving){status(t('正在保存，请稍候…','Saving, please wait…'));return false;}return !dirty()||AppDialog.confirm(t('当前月报有未保存的修改，确定放弃吗？','This report has unsaved changes. Discard them?'),{tone:'danger',confirmText:t('放弃修改','Discard')});}
     async function openReport(id){if(!await confirmDiscard())return;state.doc=M.normalize(await API.get('/api/ai-report/documents/'+encodeURIComponent(id)));state.saved=snapshot();state.undo=[];state.selected=null;render();}
-    async function newReport(month=previousMonth()){if(!await confirmDiscard())return;state.doc=M.normalize(await API.get('/api/ai-report/template?month='+month));state.saveKey=M.uid('save');state.saved='';state.undo=[];state.selected=null;render();
+    async function newReport(month=previousMonth()){
+        if(!await confirmDiscard()){toolbar();return;}
+        if(!await loadReports()){toolbar();return status(t('无法确认该月份是否已有月报，请稍后重试','Unable to check existing reports; please retry'));}
+        const existing=state.reports.find(item=>item.reportMonth===month&&item.reportKind!=='copy'&&item.reportKind!=='history'&&item.isDefault!==false);
+        if(existing){
+            state.doc=M.normalize(await API.get('/api/ai-report/documents/'+encodeURIComponent(existing.id)));state.saved=snapshot();state.undo=[];state.selected=null;render();
+            return status(t('已打开该月份已有的月报','Opened the existing report for this month'));
+        }
+        state.doc=M.normalize(await API.get('/api/ai-report/template?month='+month));state.saveKey=M.uid('save');state.saved='';state.undo=[];state.selected=null;render();
         // Only outline navigation runs immediately: it needs neither a business DB nor an AI call.
         for(const cell of M.cells(state.doc).filter(item=>item.recipe&&!item.recipe.narrative&&item.recipe.sources.length&&item.recipe.sources.every(source=>source.kind==='report'&&source.include==='outline')))await runCell(cell.id,{withNarrative:false});
     }
@@ -1017,10 +1027,10 @@
         const doc=state.doc,submitted=JSON.parse(JSON.stringify(doc)),saveKey=state.saveKey;
         state.saving=true;toolbar();status();
         try{
-            const saved=M.normalize(await API.post('/api/ai-report/documents',{...submitted,saveKey}));
-            submitted.id=saved.id;submitted.updatedAt=saved.updatedAt;
+            const saved=M.normalize(await API.post('/api/ai-report/documents',{...submitted,saveKey,saveAs:!submitted.id&&submitted.reportKind==='copy'}));
+            submitted.id=saved.id;submitted.updatedAt=saved.updatedAt;submitted.reportKind=saved.reportKind;
             if(state.doc===doc){
-                doc.id=saved.id;doc.updatedAt=saved.updatedAt;state.saved=snapshotOf(submitted);
+                doc.id=saved.id;doc.updatedAt=saved.updatedAt;doc.reportKind=saved.reportKind;state.saved=snapshotOf(submitted);
             }
             let listed=true;
             try{listed=await loadReports();}catch(_){listed=false;}
@@ -1030,13 +1040,12 @@
     }
     async function setMonth(month){
         if(!M.validMonth(month)||month===state.doc.reportMonth)return;
-        checkpoint();state.doc.reportMonth=month;render();await runAll({withNarrative:false});await generateFields();
-        if(staleCells().length)status(t('数字已按新月份更新；文字总结点“更新总结”重写','Numbers updated; use “Update summaries” to rewrite the text'));
+        try{await newReport(month);}catch(error){toolbar();status(error.message);}
     }
     async function renameOrCopy(copy){
         if(state.saving)return status(t('正在保存，请稍候…','Saving, please wait…'));
         const name=await AppDialog.prompt(copy?t('另存为新的月报名称','Save as a new report named'):t('月报名称','Report name'),{defaultValue:state.doc.name});
-        if(!name?.trim())return;checkpoint();state.doc.name=name.trim().slice(0,200);if(copy){state.doc.id='';state.saveKey=M.uid('save');}render();if(copy)await save();
+        if(!name?.trim())return;checkpoint();state.doc.name=name.trim().slice(0,200);if(copy){state.doc.id='';state.doc.reportKind='copy';state.saveKey=M.uid('save');}render();if(copy)await save();
     }
     async function removeReport(){
         if(state.saving)return status(t('正在保存，请稍候…','Saving, please wait…'));

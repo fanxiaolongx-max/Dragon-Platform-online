@@ -219,7 +219,7 @@ class AirContractTests(unittest.IsolatedAsyncioTestCase):
                 return response
             await self.use_handler(timeout_after_insert)
             doc = json.loads((ROOT / 'static/air/default-template.json').read_text())
-            doc.update(reportMonth='2026-09', saveKey='resumable-' + table)
+            doc.update(reportMonth='2026-09', saveKey='resumable-' + table, saveAs=True)
             with self.assertRaises(DatabaseError):
                 await air_service.save_document(doc)
             saved = await air_service.save_document(doc)
@@ -227,6 +227,38 @@ class AirContractTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.connection.execute('SELECT count(*) FROM t_report_template').fetchone()[0], index)
             self.assertEqual(self.connection.execute('SELECT count(*) FROM t_report_block').fetchone()[0], 18 * index)
             self.assertEqual(self.connection.execute('SELECT count(*) FROM t_report_config').fetchone()[0], 19 * index)
+
+    async def test_only_explicit_save_as_creates_second_report_in_same_month(self):
+        self.virtual_gate()
+        doc={'reportMonth':'2026-10','name':'same','saveKey':'first','chapters':[]}
+        first=await air_service.save_document(doc)
+        with self.assertRaisesRegex(Exception,'该月份已有月报'):
+            await air_service.save_document({**doc,'saveKey':'another-tab'})
+        copy=await air_service.save_document({**doc,'saveKey':'explicit-copy','saveAs':True})
+        self.assertNotEqual(first['id'],copy['id'])
+        self.assertEqual(copy['reportKind'],'copy')
+        listing=await air_service.list_documents()
+        self.assertEqual(sum(x['isDefault'] for x in listing),1)
+        await air_service.save_document(copy)
+        with self.assertRaisesRegex(QueryValidationError,'切换月份'):
+            await air_service.save_document({**first,'reportMonth':'2026-11'})
+        next_month=await air_service.save_document({**doc,'reportMonth':'2026-11','saveKey':'november'})
+        self.assertNotEqual(first['id'],next_month['id'])
+        self.assertEqual((await air_service.read_document(first['id']))['reportMonth'],'2026-10')
+
+    async def test_legacy_same_month_duplicates_are_retained_as_history(self):
+        self.virtual_gate()
+        for i in [1,2]:
+            self.connection.execute('INSERT INTO t_report_template(id,name,description,content) VALUES(?,?,?,?)',(i,'same','ai-report:legacy'+str(i),json.dumps({'reportMonth':'2026-10','chapters':[]})))
+        listing=await air_service.list_documents()
+        self.assertEqual(len(listing),2)
+        self.assertEqual(sum(x['isDefault'] for x in listing),1)
+        history=next(x for x in listing if x['reportKind']=='history')
+        loaded=await air_service.read_document(history['id'])
+        self.assertEqual(loaded['reportKind'],'history')
+        await air_service.save_document(loaded)
+        self.assertEqual(sum(x['isDefault'] for x in await air_service.list_documents()),1)
+        self.assertEqual(self.connection.execute('SELECT count(*) FROM t_report_template').fetchone()[0],2)
 
     async def test_batch_insert_chunks_by_utf8_size_and_preserves_quotes(self):
         self.virtual_gate()

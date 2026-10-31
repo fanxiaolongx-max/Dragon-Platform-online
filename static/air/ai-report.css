@@ -613,3 +613,7 @@ ol.kit-list{padding-left:2.6em}
 .air-img-pagination button:disabled{opacity:.4;cursor:default}.air-img-delete-review{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:12px}
 .air-img-delete-review .air-img-confirm-delete{color:#fff;background:#b42332;border-color:#b42332}.air-img-delete-review button:disabled{opacity:.5;cursor:wait}.air-img-empty{grid-column:1/-1;color:var(--air-muted);font-size:12px}
 @media(max-width:480px){.air-img-pagination{flex-wrap:wrap;justify-content:center}.air-img-pagination span{order:-1;flex-basis:100%;text-align:center}}
+
+/* Historical duplicates stay accessible without crowding the default monthly list. */
+.air-report-list>details{border-top:1px solid var(--air-line);margin-top:4px;padding-top:4px}
+.air-report-list>details>summary{padding:8px 10px;font-size:12px;color:var(--air-muted);cursor:pointer}

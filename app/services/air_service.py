@@ -18,7 +18,7 @@ import time
 import uuid
 from typing import Any
 
-from app.core.exceptions import QueryValidationError
+from app.core.exceptions import BusinessError, QueryValidationError
 from app.db import detect_sql_dialect, execute_app_schema, query_app_schema, query_business
 from app.services.agent_service import check_read_sql
 from app.utils.sql_helper import format_sql_value as lit
@@ -102,12 +102,24 @@ async def _report_row(report_id: int) -> dict:
 async def list_documents() -> list[dict]:
     rows = await _all_rows(
         f"SELECT id, name, content, updated_at FROM t_report_template WHERE description LIKE '{KIND}:%' ORDER BY updated_at DESC, id DESC")
-    result = []
+    result, groups = [], {}
     for row in rows:
         content = _loads(row.get("content"), {})
-        result.append({"id": str(row["id"]), "name": row.get("name") or "AI 月报",
-                       "reportMonth": content.get("reportMonth", ""), "updatedAt": str(row.get("updated_at") or "")})
-    return result
+        month = content.get("reportMonth", "")
+        kind = content.get("reportKind", "legacy")
+        entry = {"id": str(row["id"]), "name": row.get("name") or "AI 月报", "reportMonth": month,
+                 "updatedAt": str(row.get("updated_at") or ""), "reportKind": kind, "isDefault": False}
+        result.append(entry)
+        key = month if _MONTH.fullmatch(str(month)) else "invalid:" + entry["id"]
+        groups.setdefault(key, []).append(entry)
+    for group in groups.values():
+        eligible = [entry for entry in group if entry["reportKind"] not in ("copy", "history")]
+        primary = next((entry for entry in eligible if entry["reportKind"] == "primary"), eligible[0] if eligible else None)
+        for entry in group:
+            entry["isDefault"] = entry is primary
+            entry["reportKind"] = "copy" if entry["reportKind"] == "copy" else "primary" if entry is primary else "history"
+    # Default entries come first; historical duplicates remain accessible without deleting user content.
+    return sorted(result, key=lambda entry: not entry["isDefault"])
 
 
 async def read_document(report_id: Any) -> dict:
@@ -145,10 +157,14 @@ async def read_document(report_id: Any) -> dict:
             chapters.append({"id": "chapter-main", "title": {"zh": "整体情况", "en": "Overview"}, "cells": []})
         chapters[-1]["cells"].extend(orphans)
 
+    kind = content.get("reportKind")
+    if kind not in ("primary", "copy", "history"):
+        entry = next((entry for entry in await list_documents() if entry["id"] == str(report_id)), {})
+        kind = entry.get("reportKind", "history")
     style = content.get("style") if isinstance(content.get("style"), dict) else {}
     if style_row:
         style = {**style, "prompt": str(_loads(style_row.get("config_text"), {}).get("prompt") or style.get("prompt") or "")}
-    return {"version": 1, "id": str(report_id), "name": row.get("name") or "AI 月报", "reportMonth": content.get("reportMonth", ""),
+    return {"version": 1, "id": str(report_id), "name": row.get("name") or "AI 月报", "reportKind": kind, "reportMonth": content.get("reportMonth", ""),
             "template": content.get("template") or {}, "style": style, "chapters": chapters,
             "updatedAt": str(row.get("updated_at") or "")}
 
@@ -221,7 +237,8 @@ async def _save_document(doc: dict) -> dict:
     title = _text((doc.get("template") or {}).get("title"))[:255]
     now = _now()
 
-    report_id = None
+    report_id, stored_row = None, None
+    explicit_copy = doc.get("saveAs") is True
     client_id = str(doc.get("id") or "")
     save_key = str(doc.get("saveKey") or (client_id if not client_id.isdigit() else ""))
     if (client_id and not _SAVE_ID.fullmatch(client_id)) or (save_key and not _SAVE_ID.fullmatch(save_key)):
@@ -229,13 +246,31 @@ async def _save_document(doc: dict) -> dict:
     marker = f"{KIND}:{save_key or uuid.uuid4().hex}"
     if client_id.isdigit():
         rows = await query_app_schema(
-            f"SELECT id FROM t_report_template WHERE id = {int(doc['id'])} AND description LIKE '{KIND}:%' LIMIT 1", limit=1)
+            f"SELECT * FROM t_report_template WHERE id = {int(doc['id'])} AND description LIKE '{KIND}:%' LIMIT 1", limit=1)
         if not rows:
             raise QueryValidationError("月报已不存在，请重新打开或另存为新月报")
-        report_id = rows[0]["id"]
+        report_id, stored_row = rows[0]["id"], rows[0]
+        if _loads(stored_row.get("content"), {}).get("reportMonth") != content["reportMonth"]:
+            raise QueryValidationError("切换月份请打开或新建该月份月报，不能覆盖原月份记录")
     elif save_key:
-        rows = await query_app_schema(f"SELECT id FROM t_report_template WHERE description = {lit(marker)} LIMIT 1", limit=1)
+        rows = await query_app_schema(f"SELECT * FROM t_report_template WHERE description = {lit(marker)} LIMIT 1", limit=1)
         report_id = rows[0]["id"] if rows else None
+        stored_row = rows[0] if rows else None
+    if stored_row:
+        previous = _loads(stored_row.get("content"), {})
+        if previous.get("reportMonth") != content["reportMonth"]:
+            raise QueryValidationError("切换月份请打开或新建该月份月报，不能覆盖原月份记录")
+        kind = previous.get("reportKind")
+        if kind not in ("primary", "copy", "history"):
+            entry = next((entry for entry in await list_documents() if entry["id"] == str(report_id)), {})
+            kind = entry.get("reportKind", "history")
+        content["reportKind"] = kind
+    else:
+        if not explicit_copy:
+            primary = next((entry for entry in await list_documents() if entry["reportMonth"] == content["reportMonth"] and entry["isDefault"]), None)
+            if primary:
+                raise BusinessError(409, "该月份已有月报，请打开已有月报；如需第二份，请使用另存为", {"reportId": primary["id"]})
+        content["reportKind"] = "copy" if explicit_copy else "primary"
     if report_id:
         await execute_app_schema(
             f"UPDATE t_report_template SET name = {lit(name)}, title = {lit(title)}, content = {lit(_dumps(content))}, "
