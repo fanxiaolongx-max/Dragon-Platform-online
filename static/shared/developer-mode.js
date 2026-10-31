@@ -53,7 +53,7 @@
     doc.querySelectorAll('#aiBar,#aiBarRz,#aiBarFab').forEach(node=>node.remove());
     const bootstrap=doc.createElement('script');
     bootstrap.textContent=`(()=>{
-      if(parent.Icons&&!window.Icons)window.Icons=parent.Icons;
+      try{if(parent.Icons&&!window.Icons)window.Icons=parent.Icons;}catch(_e){}
       const notify=action=>parent.postMessage({type:'aiops-developer',action},'*');
       window.__openAiBar=()=>notify('assistant');
       document.addEventListener('click',event=>{
