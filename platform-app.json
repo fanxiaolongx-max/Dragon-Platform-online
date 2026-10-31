@@ -1,0 +1,9 @@
+{
+  "name": "AiOps-Report",
+  "version": "1.4.6",
+  "entry": "app.main:create_app",
+  "factory": true,
+  "interface": "asgi",
+  "healthPath": "/health",
+  "databaseContract": "digital-human"
+}
