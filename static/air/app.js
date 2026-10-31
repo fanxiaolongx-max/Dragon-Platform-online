@@ -1007,7 +1007,10 @@
     async function loadReports(){try{state.reports=await API.get('/api/ai-report/documents');}catch(error){state.reports=[];status(error.message);}}
     async function confirmDiscard(){return !dirty()||AppDialog.confirm(t('当前月报有未保存的修改，确定放弃吗？','This report has unsaved changes. Discard them?'),{tone:'danger',confirmText:t('放弃修改','Discard')});}
     async function openReport(id){if(!await confirmDiscard())return;state.doc=M.normalize(await API.get('/api/ai-report/documents/'+encodeURIComponent(id)));state.saved=snapshot();state.undo=[];state.selected=null;render();}
-    async function newReport(month=previousMonth()){if(!await confirmDiscard())return;state.doc=M.normalize(await API.get('/api/ai-report/template?month='+month));state.saved='';state.undo=[];state.selected=null;render();}
+    async function newReport(month=previousMonth()){if(!await confirmDiscard())return;state.doc=M.normalize(await API.get('/api/ai-report/template?month='+month));state.saved='';state.undo=[];state.selected=null;render();
+        // Only outline navigation runs immediately: it needs neither a business DB nor an AI call.
+        for(const cell of M.cells(state.doc).filter(item=>item.recipe&&!item.recipe.narrative&&item.recipe.sources.length&&item.recipe.sources.every(source=>source.kind==='report'&&source.include==='outline')))await runCell(cell.id,{withNarrative:false});
+    }
     async function save(){
         if(!state.doc)return;$('[data-air=save]').disabled=true;
         try{const saved=M.normalize(await API.post('/api/ai-report/documents',state.doc));state.doc.id=saved.id;state.doc.updatedAt=saved.updatedAt;state.saved=snapshot();await loadReports();render();status(t('已保存到服务器','Saved to server'));}

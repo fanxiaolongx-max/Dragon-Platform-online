@@ -69,7 +69,8 @@
     }
     async function compute(cell,month){
         if(readsResults(cell))await fillGists(cell);
-        const {input,missing}=await API.post('/api/ai-report/run-data',{month,recipe:cell.recipe});
+        // Outline/result sources already live in this report; do not require a backend for navigation.
+        const {input,missing}=cell.recipe.sources.every(source=>source.kind==='report')?{input:{},missing:[]}:await API.post('/api/ai-report/run-data',{month,recipe:cell.recipe});
         input.$month=month;
         for(const source of cell.recipe.sources)if(source.kind==='report')input[source.id]=reportInput(cell,source);
         // Overviews quote other cells' conclusions on purpose, so the one-summary check does not apply to them.

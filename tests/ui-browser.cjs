@@ -79,6 +79,16 @@ async function workspace(page, origin, pathname, sandbox = false) {
   await page.waitForFunction(() => !!window.DragonClaw && !document.body.classList.contains('air-booting'));
   console.log('Workspace:', pathname, sandbox ? 'sandbox' : 'normal');
   if(await page.locator('#aiBar').isVisible()) await page.locator('#aiBarClose').click();
+  await page.locator('#airReport .kit-nav-item').first().waitFor();
+  assert.equal(await page.locator('#airReport .air-chapter').count(),10);
+  assert.equal(await page.locator('#airReport .air-cell').count(),18);
+  assert.equal(await page.locator('#airReport .kit-nav-item').count(),8);
+  assert.equal(await page.locator('#airReport h1').textContent().then(text=>text.replace(/✦/g,'').trim()),'埃及代表处交付与服务维护月报');
+  assert.equal(await page.locator('#airReport .air-logo').getAttribute('src'),'air/default-logo.png');
+  await page.locator('#airReport .kit-nav-item').last().click();
+  await page.locator('#airReport .is-jump-target').waitFor();
+
+  if(await page.locator('#aiBar').isVisible()) await page.locator('#aiBarClose').click();
   const url = page.url();
   // Open with a mouse click: opening must leave report DOM and dirty content intact.
   await page.locator('#airReport').evaluate(el => el.dataset.unsavedFixture = 'preserve');

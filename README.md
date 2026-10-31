@@ -5,7 +5,7 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.4.6`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.4.7`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
@@ -246,3 +246,12 @@ python3 scripts/build_release.py
 ## 📄 License
 
 Internal Tooling Project · [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
+
+
+### 默认月报模板（1.4.7）
+
+新建月报使用 Tools Platform 中已保存的 AI 月报模板：版式名称“护网与网络安全月报”，标题“埃及代表处交付与服务维护月报”，含开头 7 个字段、10 个章节、18 个格子及其中 14 个已有格子提示词。章节名称、顺序、宽高、内部布局、整体/章节样式和开头字段提示词与来源保持一致；来源中的空白格子、空章节和原有章节名称也保留。默认 LOGO 是一并打包的来源平台 LOGO，不依赖平台图片接口。
+
+报告时间按数据月份的下一个月、数据月份按当前选定月份生成（YYYYMM），支持跨年。章节导航在新建时由本月报大纲本地生成，8 个按钮，默认每行 4 个，无需业务库或 AI。其它格子保留提示词，打开对话点击“试一下”即可在当前环境重新查找来源并生成；平台导入表/指标的旧配方与历史计算结果不随默认模板发布。源提示词中的明确业务口径保留，生成结果仍应核对当前环境的数据源与指标配置。
+
+此默认值只用于“新建月报”。升级包不会覆盖应用库中已经保存的月报；已有月报要使用该模板，请新建一份。修改内置模板请更新 `static/air/default-template.json`，不要在初始化/升级 SQL 中覆盖用户文档。模板快照来源更新时间：2026-10-27T16:43:41.469Z。
