@@ -1059,6 +1059,14 @@
         catch(error){status(t('导出失败：','Export failed: ')+error.message);}
     }
 
+    window.addEventListener('message',async event=>{
+        if(event.source!==document.querySelector('#airDeveloper iframe')?.contentWindow)return;
+        if(event.data?.type==='aiops-environment-preflight'){
+            const allowed=!state.saving&&!state.busy.size;
+            event.source.postMessage({type:'aiops-environment-preflight-result',id:event.data.id,allowed,dirty:dirty()},'*');
+        }
+        if(event.data?.type==='aiops-environment-switched')location.reload();
+    });
     $('#airMonth').addEventListener('change',event=>setMonth(event.target.value));
     $('.air-toolbar').addEventListener('click',async event=>{
         const button=event.target.closest('button');if(!button)return;const menu=button.closest('details');if(menu)menu.open=false;

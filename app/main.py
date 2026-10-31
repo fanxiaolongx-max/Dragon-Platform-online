@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from app.config import settings
 from app.core.logger import logger
 from app.core.exceptions import register_exception_handlers
-from app.routers import health, report, data_element, data_source, data_query, table_map, agent, air
+from app.routers import health, report, data_element, data_source, data_query, table_map, agent, air, environment
 from app.db import close_client, detect_sql_dialect
 from app.utils.sql_contract import assert_host_contract
 
@@ -41,6 +41,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"]
     )
 
+    app.middleware("http")(environment.guard)
+
     # 注册路由（全部挂到根级 /api）
     app.include_router(health.router, prefix="/api")
     app.include_router(report.router, prefix="/api")
@@ -50,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(table_map.router, prefix="/api")
     app.include_router(agent.router, prefix="/api")
     app.include_router(air.router, prefix="/api")
+    app.include_router(environment.router, prefix="/api")
 
     # 挂载静态文件目录（基座要求 static/ 可访问）
     if os.path.isdir(STATIC_DIR):

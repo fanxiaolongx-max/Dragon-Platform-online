@@ -44,6 +44,7 @@
     base.href=new URL('./',document.baseURI).href;
     doc.querySelectorAll('base').forEach(node=>node.remove());
     doc.head.prepend(base);
+    for(const name of ['environment-client','data-environment']){if(!doc.querySelector('script[src*="'+name+'.js"]')){const script=doc.createElement('script');script.src='shared/'+name+'.js';(name==='environment-client'?doc.head:doc.body).appendChild(script);}}
     // Use the one assistant in the parent report rather than starting another ADC session in srcdoc.
     doc.querySelectorAll('script').forEach(script=>{
       if(script.textContent.includes('ADCChat v1.4 一体版 F12 脚本')

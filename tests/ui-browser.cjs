@@ -9,6 +9,7 @@ const requests = [], errors = [];
 const prefix = '/digital-human/dh/fixture-app/';
 let failSave=false, failList=false;
 const saves=[];
+let environmentMode='local',environmentRevision=0,nativeEnvironment=false;
 let monthMode=false;const monthDocs=new Map();
 let executionFailure=null, htmlFallback=false;
 const adc = `window.ADCChat={configured:true,busy:false,environment:'Fixture',newSession:async()=> 'fixture',stop(){},ask:async(_q,o)=>o.onUpdate('验证回答。\\n\\n\`\`\`js\\nconst answer = 2;\\n\`\`\`')};`;
@@ -18,6 +19,13 @@ const server = http.createServer((req, res) => {
   const nested = url.startsWith(prefix);
   if (nested) url = '/' + url.slice(prefix.length);
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers','content-type,x-aiops-environment-revision');
+  res.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,DELETE,OPTIONS');
+  if(req.method==='OPTIONS'){res.end();return;}
+  if(url==='/api/environment'){
+    const reply=()=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({code:0,data:{mode:nativeEnvironment?'remote':environmentMode,revision:environmentRevision,switchable:!nativeEnvironment,remoteReady:true}}));};
+    if(req.method==='POST'){let body='';req.on('data',c=>body+=c);req.on('end',()=>{environmentMode=JSON.parse(body).mode;environmentRevision++;reply();});}else reply();return;
+  }
   if(url.endsWith('/api/agent/execute') && executionFailure){
     if(executionFailure.network){ req.socket.destroy(); return; }
     res.statusCode=executionFailure.status;
@@ -129,6 +137,28 @@ async function monthFlow(page,origin){
   assert.equal([...monthDocs.values()].filter(d=>d.reportKind==='copy').length,1);
   assert.match(await page.locator('#airReportName').textContent(),/副本/);
   console.log('PASS: one default per month, existing-month navigation, preserved October, explicit save-as copy, accessible legacy history.');
+}
+async function environmentFlow(page,origin){
+  monthMode=false;
+  await page.goto(origin+'/');await page.locator('#airReport h1').waitFor();
+  if(await page.locator('#aiBar').isVisible())await page.locator('#aiBarClose').click();
+  await page.locator('#airDeveloperOpen').click();
+  const frame=page.frameLocator('#airDeveloper iframe');
+  const select=frame.locator('select[aria-label="数据环境"]');
+  await select.waitFor();await page.waitForTimeout(100);
+  assert.equal(await select.inputValue(),'local');
+  assert(await frame.locator('#apiBase').evaluate(el=>el.readOnly));
+  page.on('dialog',d=>d.accept());
+  await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),select.selectOption('remote')]);
+  assert.equal(environmentMode,'remote');assert.equal(environmentRevision,1);
+  await page.locator('#airReport h1').waitFor();
+  nativeEnvironment=true;
+  await page.goto(origin+'/');await page.locator('#airReport h1').waitFor();
+  if(await page.locator('#aiBar').isVisible())await page.locator('#aiBarClose').click();
+  await page.locator('#airDeveloperOpen').click();
+  await select.waitFor();await page.waitForTimeout(100);
+  assert.equal(await select.inputValue(),'remote');assert(await select.isDisabled());
+  console.log('PASS: developer environment selector, shared profile switch and reload, native-base switch lock.');
 }
 let browser;
 async function contained(page, selector = '#aiBar') {
@@ -366,6 +396,7 @@ async function assistantFeedback(page){
   assert(!requests.some(url => /\/dev(?:\?|$)/.test(url)), 'Developer mode must not navigate to /dev');
   await saveFlow(page,origin);
   await monthFlow(page,origin);
+  await environmentFlow(page,origin);
   assert.deepEqual(errors, []);
   console.log('PASS: restored geometry, four-edge dragging, both resize handles, dark buttons, iframe zoom, viewport resizing, visual viewport zoom, modal state/focus, root and prefixed API paths, sandboxed embedding.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => { await browser?.close(); server.close(); });
