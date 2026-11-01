@@ -33,8 +33,8 @@ class DataSourceError(BusinessError):
 
 class DatabaseError(BusinessError):
     """数据库访问异常"""
-    def __init__(self, message: str = "数据库访问异常"):
-        super().__init__(code=500, message=message)
+    def __init__(self, message: str = "数据库访问异常", data=None):
+        super().__init__(code=500, message=message, data=data)
 
 
 def register_exception_handlers(app: FastAPI):

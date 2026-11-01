@@ -153,6 +153,13 @@ async function environmentFlow(page,origin){
   const select=frame.locator('select[aria-label="数据环境"]');
   await select.waitFor();await page.waitForTimeout(100);
   assert.equal(await select.inputValue(),'local');
+  const contrast=async locator=>locator.evaluate(el=>{
+    const css=getComputedStyle(el),rgb=text=>text.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>{v/=255;return v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4;});
+    const luminance=text=>rgb(text).reduce((sum,v,i)=>sum+v*[0.2126,0.7152,0.0722][i],0);
+    const a=luminance(css.color),b=luminance(css.backgroundColor);return (Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);
+  });
+  assert(await contrast(select)>=4.5,'Environment control text must contrast with its background');
+  assert(await contrast(select.locator('option[value="remote"]'))>=4.5,'Expanded options remain readable');
   assert(await frame.locator('#apiBase').evaluate(el=>el.readOnly));
   page.on('dialog',d=>d.accept());
   await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),select.selectOption('remote')]);
@@ -164,6 +171,8 @@ async function environmentFlow(page,origin){
   await page.locator('#airDeveloperOpen').click();
   await select.waitFor();await page.waitForTimeout(100);
   assert.equal(await select.inputValue(),'remote');assert(await select.isDisabled());
+  assert(await contrast(select)>=4.5,'Locked native control remains readable');
+  const screenshotDir=process.env.UI_SCREENSHOTS;if(screenshotDir){fs.mkdirSync(screenshotDir,{recursive:true});await frame.locator('.topbar').screenshot({path:path.join(screenshotDir,'environment-selector.png')});}
   console.log('PASS: developer environment selector, shared profile switch and reload, native-base switch lock.');
 }
 async function stopFlow(page,origin){

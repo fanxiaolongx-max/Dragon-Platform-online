@@ -3,12 +3,22 @@
  'use strict';
  const base=document.getElementById('apiBase');if(!base)return;
  const field=base.closest('.basefield');base.readOnly=true;
- const select=document.createElement('select');select.setAttribute('aria-label','数据环境');
+ const style=document.createElement('style');
+ style.textContent=`
+ .topbar .data-environment-select{flex:0 0 auto;max-width:168px;min-height:34px;padding:6px 10px;border:1px solid #64748b;border-radius:6px;background:#17263d;color:#f8fafc;color-scheme:dark;font:500 12px/1.5 var(--font,sans-serif);cursor:pointer}
+ .topbar .data-environment-select option{background:#17263d;color:#f8fafc}
+ .topbar .data-environment-select:hover:not(:disabled){background:#223750;border-color:#5eead4}
+ .topbar .data-environment-select:focus-visible{outline:2px solid #5eead4;outline-offset:2px}
+ .topbar .data-environment-select:disabled{background:#1e293b;color:#cbd5e1;opacity:1;cursor:default;-webkit-text-fill-color:#cbd5e1}
+ .topbar .data-environment-status{font-size:11px;color:#cbd5e1;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ @media(max-width:1100px){.topbar .data-environment-status{display:none}}
+ @media(forced-colors:active){.topbar .data-environment-select{background:Canvas;color:CanvasText;border-color:ButtonText}.topbar .data-environment-select:disabled{color:GrayText;-webkit-text-fill-color:GrayText}.topbar .data-environment-select option{background:Canvas;color:CanvasText}}`;
+ document.head.appendChild(style);
+ const select=document.createElement('select');select.className='data-environment-select';select.setAttribute('aria-label','数据环境');
  select.innerHTML='<option value="local">本地模拟基座</option><option value="remote">远端数字人基座</option>';
- select.style.cssText='max-width:160px;background:var(--bg-soft,#142138);color:inherit;border:1px solid var(--border,#486078);border-radius:6px;padding:6px';
  field.after(select);
  base.style.width='180px';
- const status=document.createElement('span');status.setAttribute('role','status');status.style.cssText='font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';select.after(status);
+ const status=document.createElement('span');status.className='data-environment-status';status.setAttribute('role','status');select.after(status);
  const api=()=>base.value.replace(/\/+$/,'')+'/environment';
  let mode;
  async function load(){

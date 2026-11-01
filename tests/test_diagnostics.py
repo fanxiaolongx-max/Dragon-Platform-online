@@ -6,7 +6,7 @@ import httpx
 from fastapi import FastAPI
 from app import db
 from app.config import settings
-from app.core.exceptions import register_exception_handlers
+from app.core.exceptions import DatabaseError, register_exception_handlers
 from app.routers import diagnostics
 from app.services import database_diagnostics as suite
 
@@ -66,6 +66,17 @@ class DiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Unsupported query', result['upstream'][0]['message'])
         for secret in ('fixture-secret', 'abc123', 'PRIVATE_RECORD', 'PRIVATE_INPUT'):
             self.assertNotIn(secret, json.dumps(result))
+
+    async def test_upstream_http_error_preserves_database_error_and_request_metadata(self):
+        self.failure = True
+        with self.assertRaises(DatabaseError) as caught:
+            await db.query_business('SELECT 1 AS probe', 1)
+        error = caught.exception
+        self.assertEqual(error.code, 500)
+        self.assertEqual(error.data['httpStatus'], 400)
+        self.assertIn(error.data['requestId'], error.message)
+        self.assertNotIn('fixture-secret', error.message)
+        self.assertNotIn('PRIVATE_RECORD', json.dumps(error.data))
 
     async def test_unknown_probes_and_identifier_injection_are_rejected_before_base_call(self):
         for payload in ({'id': 'execute', 'sql': 'DELETE FROM x'}, {'id': 'table-plain', 'table': "x';DROP TABLE y;--"}, {'id': 'app-table:other'}):
