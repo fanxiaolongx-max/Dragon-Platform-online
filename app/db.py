@@ -6,6 +6,11 @@
 """
 import asyncio
 from contextvars import ContextVar
+import hashlib
+import json
+import re
+import uuid
+from urllib.parse import urlsplit
 import time
 from email.utils import parsedate_to_datetime
 
@@ -14,6 +19,8 @@ import httpx
 from app.config import settings
 from app.core.exceptions import DatabaseError, QueryValidationError
 from app.core.logger import logger
+from app.core.diagnostic_safety import clean, group_name
+from app.core.runtime_diagnostics import BOOT_ID
 from app.utils import sql_helper
 from app.utils.sql_contract import assert_app_write, assert_read_query
 
@@ -99,17 +106,35 @@ def _retry_after(response, attempt):
 
 
 async def _base_request(method, url, **kwargs):
+    request_id = str(uuid.uuid4())
     for attempt in range(4):
         await _gate.wait()
         # 网络超时或其它模糊失败不自动重发写入，防止已成功的 INSERT 被再次执行。
-        response = await _get_client().request(method, url, **kwargs)
+        started = time.monotonic()
+        observer = request_observer.get()
+        payload = kwargs.get('json') or {}
+        metadata = {'requestId': request_id, 'bootId': BOOT_ID, 'method': method,
+                    'endpointPath': clean(re.sub(r'/~[^/]+|/[a-fA-F0-9-]{36}', '/[identity]', urlsplit(str(url)).path)),
+                    'scope': 'app' if 'schema' in payload else 'business' if 'datasourceName' in payload else 'metadata',
+                    'businessDatasourceName': group_name(payload.get('datasourceName')),
+                    'payloadKeys': sorted(key for key in payload if key in ('datasourceId', 'schema', 'datasourceName', 'sql', 'limit')),
+                    'sqlFingerprint': hashlib.sha256(str(payload.get('sql', '')).encode()).hexdigest()[:16],
+                    'attempt': attempt + 1, 'ms': round((time.monotonic() - started) * 1000)}
+        try:
+            response = await _get_client().request(method, url, **kwargs)
+        except httpx.RequestError as error:
+            metadata.update(ms=round((time.monotonic() - started) * 1000), networkErrorType=type(error).__name__)
+            logger.warning('BASE_REQUEST_FAILURE ' + json.dumps(metadata, ensure_ascii=False))
+            if observer:
+                observer(None, {'code': 'NETWORK_ERROR', 'message': type(error).__name__}, metadata)
+            raise
+        metadata['ms'] = round((time.monotonic() - started) * 1000)
         try:
             data = response.json()
         except ValueError:
             data = None
-        observer = request_observer.get()
         if observer:
-            observer(response, data)
+            observer(response, data, metadata)
         code = data.get("code") if isinstance(data, dict) else None
         limited = response.status_code == 429 or code in (429, "429", "HOSTED_DATA_RATE_LIMIT")
         if limited:
@@ -122,7 +147,8 @@ async def _base_request(method, url, **kwargs):
             error.data = {"retryAfter": delay}
             raise error
         if response.is_error:
-            raise DatabaseError(f"基座 API 请求失败（HTTP {response.status_code}）")
+            logger.warning('BASE_REQUEST_FAILURE ' + json.dumps({**metadata, 'httpStatus': response.status_code, 'code': clean(code)}, ensure_ascii=False))
+            raise DatabaseError(f"基座 API 请求失败（HTTP {response.status_code}，请求编号 {request_id}）", data={'requestId': request_id, 'httpStatus': response.status_code})
         if not isinstance(data, dict):
             raise DatabaseError("基座 API 返回了无效的 JSON 响应")
         return data

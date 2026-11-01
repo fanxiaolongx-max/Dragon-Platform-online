@@ -7,7 +7,10 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from app import db
-from app.config import settings
+from app.config import settings, configuration_origins
+from app.core.diagnostic_safety import clean, error_summary, group_name
+from app.core.runtime_diagnostics import snapshot
+from app.core.logger import logger
 from app.core.exceptions import QueryValidationError
 from app.utils.sql_contract import assert_read_query
 
@@ -30,29 +33,6 @@ CHECKS = [
     ('guard', '本地只读 SQL 守卫 / Local SQL guard'),
 ] + [('app-table:' + t, '应用表 / App table: ' + t) for t in APP_TABLES]
 
-def clean(value):
-    text = str(value or '')
-    text = re.sub(r'https?://[^\s<>"\']+', '[URL]', text, flags=re.I)
-    text = re.sub(r'(?i)\bBearer\s+\S+', 'Bearer [REDACTED]', text)
-    text = re.sub(r'(?i)(authorization|cookie|api[_-]?key|token|secret|password)["\s\x27:=]+[^\s,;}]+', r'\1=[REDACTED]', text)
-    text = re.sub(r'\b(?:[A-Fa-f0-9]{48,}|sk-[A-Za-z0-9_-]{12,}|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b', '[REDACTED]', text)
-    return text[:800]
-
-def error_summary(body):
-    # Allowlisted error fields only: never include response data, input, rows, headers or request config.
-    if not isinstance(body, dict):
-        return 'Non-JSON upstream response' if body is None else 'Unexpected upstream response type'
-    parts = []
-    for key in ('message', 'error', 'msg', 'detail'):
-        value = body.get(key)
-        if isinstance(value, str):
-            parts.append(clean(value))
-        elif key == 'detail' and isinstance(value, list):
-            for item in value[:5]:
-                if isinstance(item, dict):
-                    parts.append(clean(str(item.get('loc', '')) + ': ' + str(item.get('msg', ''))))
-    return '; '.join(parts)[:1200]
-
 def identifier(table):
     table = table.strip() or DEFAULT_TABLE
     if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,127}', table):
@@ -72,7 +52,27 @@ def configuration():
             'queryUrlConfigured': bool(settings.BASE_QUERY_URL), 'appSchemaConfigured': bool(settings.APP_SCHEMA),
             'businessAssigned': bool(settings.BUSINESS_DATASOURCE_NAME), 'appDatasourceConfigured': settings.APP_DATASOURCE_ID not in ('', None),
             'identityInjection': settings.INJECT_IDENTITY_HEADERS, 'tlsVerification': settings.HTTP_VERIFY_SSL,
-            'httpTimeoutSeconds': settings.HTTP_TIMEOUT}
+            'httpTimeoutSeconds': settings.HTTP_TIMEOUT, 'businessDatasourceName': group_name(settings.BUSINESS_DATASOURCE_NAME),
+            'configurationOrigins': configuration_origins(), 'runtime': snapshot(),
+            'businessValueShape': {'length': len(settings.BUSINESS_DATASOURCE_NAME), 'hasOuterWhitespace': settings.BUSINESS_DATASOURCE_NAME != settings.BUSINESS_DATASOURCE_NAME.strip(), 'hasControlCharacters': any(ord(c) < 32 for c in settings.BUSINESS_DATASOURCE_NAME)}}
+
+def datasource_match(body):
+    # Compare names only; do not export other data sources, credentials or connection strings.
+    candidates = [body.get('data'), body.get('rows'), body.get('list')]
+    data = body.get('data')
+    if isinstance(data, dict):
+        candidates += [data.get(key) for key in ('rows', 'list', 'items', 'datasources', 'dataSources')]
+    rows = next((value for value in candidates if isinstance(value, list)), None)
+    configured = settings.BUSINESS_DATASOURCE_NAME
+    names = []
+    for row in rows or []:
+        if isinstance(row, str): names.append(row)
+        elif isinstance(row, dict):
+            names.extend(str(row[key]) for key in ('name', 'datasourceName', 'dataSourceName', 'groupName') if isinstance(row.get(key), str))
+    return {'configuredBusinessName': group_name(configured), 'configuredNameListed': configured in names if names or rows == [] else None,
+            'catalogParsed': rows is not None, 'catalogItemCount': len(rows) if rows is not None else None,
+            'namesComparable': bool(names) or rows == [], 'otherNamesExported': False}
+
 
 def manifest(table='', full=False):
     table = identifier(table)
@@ -115,14 +115,14 @@ async def probe(key, table=''):
     if key not in {item[0] for item in CHECKS} | {'scan-columns'}:
         raise QueryValidationError('未知测试项 / Unknown probe')
     started = time.monotonic()
-    result = {'id': key, 'table': table, 'requestId': str(uuid.uuid4()), 'at': datetime.now(timezone.utc).isoformat(), 'status': 'pass', 'upstream': []}
-    def observe(response, body):
+    result = {'id': key, 'table': table, 'requestId': str(uuid.uuid4()), 'at': datetime.now(timezone.utc).isoformat(), 'runtime': snapshot(), 'status': 'pass', 'upstream': []}
+    def observe(response, body, request):
         if len(result['upstream']) >= 4:
             return
         code = body.get('code') if isinstance(body, dict) else None
-        result['upstream'].append({'httpStatus': response.status_code, 'code': clean(code),
-                                   'message': error_summary(body) if response.is_error or code not in (0, '0', None) else '',
-                                   'requestId': clean(response.headers.get('x-request-id', ''))})
+        result['upstream'].append({'httpStatus': response.status_code if response is not None else None, 'code': clean(code),
+                                   'message': error_summary(body) if response is None or response.is_error or code not in (0, '0', None) else '',
+                                   'requestId': clean(response.headers.get('x-request-id', '')) if response is not None else '', 'request': request})
     token = db.request_observer.set(observe)
     try:
         async def execute():
@@ -134,6 +134,9 @@ async def probe(key, table=''):
                 body = await db._base_request('GET', db._base_datasources_url())
                 if body.get('code') not in (0, '0'):
                     raise QueryValidationError(error_summary(body) or '数据源接口业务响应失败')
+                result['datasourceMatch'] = datasource_match(body)
+                if result['datasourceMatch']['configuredNameListed'] is False:
+                    result.update(status='warning', message='运行时业务组未在基座数据源清单中匹配；请核对基座分配、注入值与旧 .env，不会自动切换其他库')
             elif key == 'guard':
                 for sql in ('DELETE FROM t_report_config', 'CREATE TABLE diagnostic_probe(id INT)', "ATTACH DATABASE 'other.db' AS other"):
                     try:
@@ -155,4 +158,6 @@ async def probe(key, table=''):
     finally:
         db.request_observer.reset(token)
     result['ms'] = round((time.monotonic() - started) * 1000)
+    if result['status'] != 'pass':
+        logger.warning('DATABASE_PROBE ' + json.dumps({'requestId': result['requestId'], 'bootId': snapshot()['bootId'], 'probe': key, 'table': table, 'status': result['status'], 'baseRequestIds': [item['request']['requestId'] for item in result['upstream']]}, ensure_ascii=False))
     return result

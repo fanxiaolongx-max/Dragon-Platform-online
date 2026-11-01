@@ -3,6 +3,8 @@
 import os
 from functools import lru_cache
 from typing import List
+from pathlib import Path
+from dotenv import dotenv_values
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,7 +30,7 @@ class Settings(BaseSettings):
 
     # ---- 运行 ----
     WORKERS: int = 1
-    RELOAD: bool = True
+    RELOAD: bool = False         # 基座由进程管理器启停；自动重载可能留下监听端口的子进程
     PORT: int = 5600              # 主服务端口
 
     # ---- CORS ----
@@ -67,9 +69,41 @@ class Settings(BaseSettings):
     HTTP_VERIFY_SSL: bool = False  # 基座自签证书，关闭校验
 
 
+_DIAGNOSTIC_FIELDS = ('BASE_QUERY_URL', 'APP_DATASOURCE_ID', 'APP_SCHEMA', 'BUSINESS_DATASOURCE_NAME', 'PORT', 'WORKERS', 'RELOAD')
+def _environment_value(key):
+    return next((value for name, value in reversed(list(os.environ.items())) if name.upper() == key), None)
+
+_START_ENV = {key: _environment_value(key) for key in _DIAGNOSTIC_FIELDS}
+try:
+    _START_DOTENV = {key.upper(): value for key, value in dotenv_values(Path.cwd() / '.env').items() if key.upper() in _DIAGNOSTIC_FIELDS}
+except (OSError, ValueError):
+    _START_DOTENV = {}
+
+def configuration_origins():
+    """Only source labels and comparisons; never return environment/file contents."""
+    def matches(value, loaded):
+        if value is None: return None
+        if isinstance(loaded, bool): return value.lower() in ('true', '1', 'yes', 'on') if loaded else value.lower() in ('false', '0', 'no', 'off')
+        if isinstance(loaded, int):
+            try: return int(value) == loaded
+            except ValueError: return False
+        return str(value) == str(loaded)
+    return {key: {
+        'source': 'process-environment' if _START_ENV[key] is not None else '.env' if _START_DOTENV.get(key) is not None else 'default',
+        'environmentPresentAtLoad': _START_ENV[key] is not None,
+        'dotenvContainsField': key in _START_DOTENV,
+        'environmentChangedSinceLoad': _environment_value(key) != _START_ENV[key],
+        'environmentMatchesLoaded': matches(_environment_value(key), getattr(settings, key)),
+        'dotenvMatchesLoaded': matches(_START_DOTENV.get(key), getattr(settings, key)),
+    } for key in _DIAGNOSTIC_FIELDS}
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
 
 
 settings = get_settings()
+
+def reload_profile(config):
+    managed = bool(config.APP_UUID or config.APP_SCHEMA or os.getenv('PLATFORM_APP_SLUG'))
+    return {'requested': config.RELOAD, 'managed': managed, 'enabled': config.RELOAD and not managed}

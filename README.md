@@ -5,7 +5,7 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.5.4`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.5.5`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
@@ -91,10 +91,9 @@ pip install -r requirements.txt
 
 ```env
 APP_NAME=AiOps-Report
-APP_VERSION=1.4.4
 PORT=5600
 WORKERS=1
-RELOAD=true
+RELOAD=false
 LOG_LEVEL=INFO
 ```
 
@@ -294,6 +293,16 @@ Internal Tooling Project · [Dragon Platform](https://github.com/fanxiaolongx-ma
 
 停止时会隔离旧异步任务持有的文档对象，并使用独立的取消令牌拒绝旧响应。立即重新生成使用新令牌，旧任务不能覆盖新结果或清除新任务的忙碌状态。停止会取消尚未触发的尺寸自动调整与批量队列；已完成的内容保留，不自动保存。停止仅针对月报生成，不取消单独运行的 Dragon Claw 助理会话。
 
+
+### 启动与配置追踪（1.5.5）
+
+`run.py` 通过同一份 Settings 读取进程环境与 `.env`，进程环境优先。默认 `RELOAD=false`；检测到基座/托管应用身份（应用 UUID、应用 schema 或平台托管标识）时，即使残留配置请求 `RELOAD=true`，启动器也关闭自动重载。直接本地开发可显式启用重载，但只监控 `app/`，不监控虚拟环境。修改基座分配后仍需重启进程才能加载新配置；应用不会模糊匹配或尝试其他业务库。
+
+诊断导出新增实际业务组名、七个允许检查字段的配置来源及一致性标志、值的空白/控制字符检查、PID/父 PID、启动标识与 UTC 启动时间、运行/包版本、Python 版本、重载请求值与实际启用值、源码指纹。数据源探针只比较配置名称是否在基座清单中匹配，不导出其他数据源名称、连接信息或记录；无法解析的清单标为未知，不猜测匹配成功。
+
+应用运行日志中的 `AIOPS_LAUNCH` / `AIOPS_RUNTIME` 可与诊断 JSON 的启动标识核对。`AIOPS_LAUNCH_EXIT` 保留启动失败退出码；`BASE_REQUEST_FAILURE` / `DATABASE_PROBE` 通过请求编号关联失败请求，只记录方法、脱敏路径、作用域、参数名、SQL 指纹、状态码与耗时，不打印请求头、SQL/写入正文或原始响应。导出的诊断 SQL 仍仅限套件的固定只读探针。
+
+若基座日志显示 `Address already in use` 且新进程退出，不能仅凭此前“Process alive”认定重启成功。先在基座停止该应用，由管理员确认并释放属于该应用的残留监听进程，再启动新版；应用包不会自动终止占用端口的其他进程。HTTP 200 的应用访问日志同样不能代替业务 `code` 与基座原始状态检查。
 
 ### 数据库测试一键套件（1.5.4）
 

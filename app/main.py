@@ -74,6 +74,11 @@ def create_app() -> FastAPI:
         assert_host_contract()
         await detect_sql_dialect()
         logger.info(f"{settings.APP_NAME} v{settings.APP_VERSION} 启动完成")
+        from app.services.database_diagnostics import configuration
+        import json
+        logger.info('AIOPS_RUNTIME ' + json.dumps(configuration(), ensure_ascii=False))
+        if settings.RELOAD:
+            logger.warning('配置请求了 RELOAD=true；run.py 在基座/托管身份下会禁用重载，生产配置建议同步改为 false')
 
     @app.on_event("shutdown")
     async def shutdown_event():

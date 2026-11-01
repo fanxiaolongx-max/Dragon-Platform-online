@@ -20,9 +20,12 @@ class DiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         settings.BUSINESS_DATASOURCE_NAME = 'assigned-business'
         self.sent = []
         self.failure = False
+        self.catalog = None
         async def handler(request):
             body = json.loads(request.content) if request.content else {}
             self.sent.append((request.method, body))
+            if request.method == 'GET' and self.catalog is not None:
+                return httpx.Response(200, json={'code': 0, 'data': self.catalog})
             if self.failure:
                 return httpx.Response(400, json={'code': 400, 'message': 'SQL rejected token=fixture-secret Bearer abc123', 'data': {'private': 'PRIVATE_RECORD'}, 'detail': [{'loc': ['body', 'sql'], 'msg': 'Unsupported query', 'input': 'PRIVATE_INPUT'}]}, headers={'x-request-id': 'upstream-probe'})
             return httpx.Response(200, json={'code': 0, 'data': {'rows': [{'private': 'PRIVATE_RECORD', 'probe': 1}]}})
@@ -78,6 +81,43 @@ class DiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         first, second = await asyncio.gather(suite.probe('app-basic'), suite.probe('business-basic'))
         self.assertEqual(len(first['upstream']), 1); self.assertEqual(len(second['upstream']), 1)
         self.assertNotEqual(first['requestId'], second['requestId'])
+
+    async def test_datasource_mismatch_does_not_guess_or_export_other_groups(self):
+        self.catalog = [{'name': 'another-business', 'password': 'HIDDEN_PASSWORD', 'url': 'https://secret@host'}]
+        result = await suite.probe('datasources')
+        self.assertEqual(result['status'], 'warning')
+        self.assertIs(result['datasourceMatch']['configuredNameListed'], False)
+        self.assertNotIn('another-business', json.dumps(result))
+        self.assertNotIn('HIDDEN_PASSWORD', json.dumps(result))
+        self.assertEqual(len(self.sent), 1)
+        self.catalog = [{'datasourceName': 'assigned-business'}]
+        matched = await suite.probe('datasources')
+        self.assertEqual(matched['status'], 'pass')
+        self.assertIs(matched['datasourceMatch']['configuredNameListed'], True)
+
+    async def test_process_and_base_request_ids_are_exported_without_payload_or_credentials(self):
+        result = await suite.probe('business-basic')
+        self.assertEqual(result['runtime']['pid'], __import__('os').getpid())
+        request = result['upstream'][0]['request']
+        self.assertEqual(request['bootId'], result['runtime']['bootId'])
+        self.assertEqual(request['scope'], 'business')
+        self.assertEqual(request['businessDatasourceName'], 'assigned-business')
+        self.assertEqual(request['method'], 'POST')
+        self.assertEqual(request['payloadKeys'], ['datasourceName', 'limit', 'sql'])
+        self.assertNotIn('body', request); self.assertNotIn('headers', request)
+        self.assertEqual(suite.clean(0), '0')
+
+    async def test_network_failures_keep_scope_and_request_id_without_raw_exception_logging(self):
+        await db._client.aclose()
+        def fail(request): raise httpx.ConnectError('failed token=fixture-secret', request=request)
+        db._client = httpx.AsyncClient(transport=httpx.MockTransport(fail))
+        result = await suite.probe('business-basic')
+        self.assertEqual(result['status'], 'fail')
+        request = result['upstream'][0]['request']
+        self.assertEqual(request['networkErrorType'], 'ConnectError')
+        self.assertEqual(request['scope'], 'business')
+        self.assertIsNone(result['upstream'][0]['httpStatus'])
+        self.assertNotIn('fixture-secret', json.dumps(result))
 
 
 if __name__ == '__main__': unittest.main()

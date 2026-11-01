@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
 """启动脚本 — uvicorn 入口（基座直接 python run.py 执行）"""
 import os
+import json
 import uvicorn
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
+from app.config import settings, reload_profile
 from app.main import app  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
@@ -21,15 +19,24 @@ async def health_check():
     return {"status": "healthy"}
 
 
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", "5600"))
-    workers = int(os.getenv("WORKERS", "1"))
-    reload_mode = os.getenv("RELOAD", "true").lower() == "true"
+def server_options():
+    """One settings source; development watchers never include the virtual environment."""
+    reload_enabled = reload_profile(settings)['enabled']
+    options = dict(host='0.0.0.0', port=settings.PORT, workers=1 if reload_enabled else max(1, settings.WORKERS), reload=reload_enabled)
+    if reload_enabled:
+        options.update(reload_dirs=[os.path.join(os.path.dirname(__file__), 'app')], reload_excludes=['venv/*', '.venv/*', '__pycache__/*'])
+    return options
 
-    uvicorn.run(
-        "app.main:app" if reload_mode else app,
-        host="0.0.0.0",
-        port=port,
-        workers=1 if reload_mode else workers,
-        reload=reload_mode,
-    )
+def main():
+    from app.core.logger import logger
+    from app.services.database_diagnostics import configuration
+    from app.core.runtime_diagnostics import snapshot
+    logger.info('AIOPS_LAUNCH ' + json.dumps(configuration(), ensure_ascii=False))
+    try:
+        uvicorn.run('app.main:app', **server_options())
+    except SystemExit as error:
+        logger.error('AIOPS_LAUNCH_EXIT ' + json.dumps({'exitCode': error.code, 'runtime': snapshot()}, ensure_ascii=False))
+        raise
+
+if __name__ == "__main__":
+    main()
