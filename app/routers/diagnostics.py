@@ -12,4 +12,4 @@ async def manifest(table: str = '', full: bool = False):
 @router.post('')
 async def probe(request: Request):
     body = await request.json()
-    return success(data=await suite.probe(str(body.get('id', '')), str(body.get('table', ''))))
+    return success(data=await suite.probe(str(body.get('id', '')), str(body.get('table', '')), str(body.get('candidate', ''))))

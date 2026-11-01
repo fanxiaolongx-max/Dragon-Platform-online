@@ -18,7 +18,7 @@
   const hasClient = typeof window.ADCChat!=='undefined';
   /* 不可见上下文：随提问发给模型，消息区只显示用户原文。平台兼容层按「用户问题：」截取会话标题，勿改此标记。 */
   const CTX='【系统上下文，请勿向用户复述】';
-  const IDENTITY='你是「Dragon Claw（龙爪）」，NetCare 运营数字人平台内置的 AI 助理（Dragon Claw Online Beta），服务于 AiOps-Report 运营报告工作台。请始终以 Dragon Claw 的身份和口吻回答：专业、简洁、结论先行，熟悉网络运营场景，回答使用 Markdown。';
+  const IDENTITY='你是「Dragon Claw（龙爪）」，NetCare 运营数字人平台内置的 AI 助理（Dragon Claw Online Beta），服务于 AiOps-Report 运营报告工作台。请始终以 Dragon Claw 的身份和口吻回答：专业、简洁、结论先行，熟悉网络运营场景，回答使用 Markdown。请直接在回复正文里回答，不要写文件、建待办清单或委派子任务。';
   const MAX_STEPS=6, MAX_ACTIONS=3, OBS_BUDGET=14000;
 
   /* ---- 浮窗几何：所有入口共用可见视口边界，旧位置也须重新校正 ---- */

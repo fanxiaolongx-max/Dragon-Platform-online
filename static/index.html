@@ -150,7 +150,7 @@ body.ai-report-page #aiBarFab{right:auto;left:18px}
   const PAGE_KEYS = ["x-adc-page-timestamp", "x-adc-page-token",
     "x-gde-src-page", "x-gde-target-app"];
   // 只保存当前浏览器标签页的配置；页面刷新后重新初始化。
-  let config = null, controller = null, lastAnswer = "", captureState = null;
+  let config = null, controller = null, lastAnswer = "", captureState = null, lastRun = null;
   let runtimeRoute = null, routeCapture = null, pageAsk = null;
   const fetchRequest = window.fetch.bind(window);
 
@@ -503,9 +503,31 @@ body.ai-report-page #aiBarFab{right:auto;left:18px}
       const remain = Math.max(1000, totalMs - (Date.now() - startedAt));
       timer = setTimeout(() => active.abort(), Math.min(idleMs, remain));
     }
-    const roles = new Map(), parts = new Map(), seen = new Set();
-    let reader, buffer = "", finished = false, sawAssistant = false;
+    const roles = new Map(), parts = new Map(), seen = new Set(), events = new Map();
+    let reader, buffer = "", finished = false, sawAssistant = false, otherSession = 0;
     lastAnswer = "";
+    lastRun = null;
+    // 本轮收到了什么（事件类型、工具、推理、子会话），正文为空时用来说明原因，也供页面写进调用记录。
+    function runSummary() {
+      const own = [...parts.values()].filter(p => roles.get(p.message_id) === "assistant");
+      const tools = own.filter(p => p.type === "tool").map(p => ({ tool: String(p.tool || "?"), status: String(p.state?.status || "") }));
+      return { events: Object.fromEntries(events), partTypes: own.reduce((m, p) => (m[p.type] = (m[p.type] || 0) + 1, m), {}),
+        tools, otherSessionEvents: otherSession, textChars: answerText().length };
+    }
+    // 智能体没写正文、而是把结果交给子任务或写进文件时，取那份结果；不猜测其它内容。
+    function delegatedText() {
+      const tools = [...parts.values()].filter(p => p.type === "tool" && roles.get(p.message_id) === "assistant").reverse();
+      for (const p of tools) {
+        const s = p.state || {};
+        if (s.status === "completed" && /task|agent/i.test(p.tool || "") && typeof s.output === "string" && s.output.trim()) return { text: s.output, from: p.tool };
+      }
+      for (const p of tools) {
+        const input = p.state?.input || {};
+        const content = [input.content, input.new_string, input.text].find(v => typeof v === "string" && v.trim());
+        if (/write|edit|file/i.test(p.tool || "") && content) return { text: content, from: p.tool };
+      }
+      return null;
+    }
 
     // 规整正文：统一换行、去行尾空白、把连续多个空行合并为单个换行，避免大量留白。
     function compactText(s) {
@@ -536,7 +558,8 @@ body.ai-report-page #aiBarFab{right:auto;left:18px}
       if (data.trim() === "[DONE]") { finished = true; return; }
       const raw = JSON.parse(data), event = raw.payload || raw;
       const p = event.properties || {};
-      if (p.session_id && p.session_id !== current.sessionId) return;
+      events.set(event.type || "?", (events.get(event.type || "?") || 0) + 1);
+      if (p.session_id && p.session_id !== current.sessionId) { otherSession++; return; }
       if (event.id && seen.has(event.id)) return;
       if (event.id) seen.add(event.id); // 防止相同增量事件重复拼接。
       if (event.type === "session.error" || event.type === "error") {
@@ -619,7 +642,21 @@ body.ai-report-page #aiBarFab{right:auto;left:18px}
         }
       }
       if (!finished) throw new Error("流提前结束，当前正文仅为部分结果，不能判定完成。");
-      if (!lastAnswer) throw new Error("会话已结束但没有助手正文，请检查工具调用或错误事件。");
+      lastRun = runSummary();
+      if (!lastAnswer) {
+        const delegated = delegatedText();
+        if (delegated) {
+          lastAnswer = compactText(delegated.text);
+          lastRun.fallbackFrom = delegated.from;
+          console.warn("[正文为空] 改用工具 " + delegated.from + " 的结果", lastRun);
+          options.onUpdate?.(lastAnswer);
+          return lastAnswer;
+        }
+        const seenTools = lastRun.tools.map(t => t.tool + (t.status && t.status !== "completed" ? "(" + t.status + ")" : "")).join("、");
+        const kinds = Object.entries(lastRun.partTypes).map(([k, n]) => k + "×" + n).join("、");
+        throw new Error("会话已结束但没有助手正文（本轮收到：" + (kinds || "无助手内容") + (seenTools ? "；工具 " + seenTools : "") +
+          (lastRun.otherSessionEvents ? "；子会话事件 " + lastRun.otherSessionEvents + " 条" : "") + "）。智能体可能在用自己的工具处理，而没有直接回答。");
+      }
       console.info("[最终回答]", lastAnswer);
       return lastAnswer;
     } catch (error) {
@@ -745,6 +782,7 @@ body.ai-report-page #aiBarFab{right:auto;left:18px}
     stop: () => { pageAsk?.abort(); controller?.abort(); },
     get lastAnswer() { return lastAnswer; },
     get busy() { return Boolean(controller || pageAsk); },
+    get lastRun() { return lastRun; },
     get configured() { return Boolean(config); }
   });
   // ask 使用安装时保存的 fetch，不会把自身请求当作网页初始化请求捕获。

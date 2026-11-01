@@ -169,14 +169,16 @@ async function environmentFlow(page,origin){
   await page.goto(origin+'/');await page.locator('#airReport h1').waitFor();
   if(await page.locator('#aiBar').isVisible())await page.locator('#aiBarClose').click();
   await page.locator('#airDeveloperOpen').click();
-  await select.waitFor();await page.waitForTimeout(100);
-  assert.equal(await select.inputValue(),'remote');assert(await select.isDisabled());
-  assert(await contrast(select)>=4.5,'Locked native control remains readable');
+  const lock=frame.locator('.data-environment-lock');
+  await lock.waitFor();await page.waitForTimeout(100);
+  assert.equal(await select.inputValue(),'remote');assert(await select.isDisabled());assert(!(await select.isVisible()),'Locked native select is replaced by a read-only badge');
+  assert.match(await lock.textContent(),/远端数字人基座 · 已锁定/);
+  assert(await contrast(lock)>=4.5,'Locked environment badge remains readable');
   const screenshotDir=process.env.UI_SCREENSHOTS;if(screenshotDir){fs.mkdirSync(screenshotDir,{recursive:true});await frame.locator('.topbar').screenshot({path:path.join(screenshotDir,'environment-selector.png')});}
   const originalViewport=page.viewportSize();
   for(const width of [1280,768,390]){
     await page.setViewportSize({width,height:850});
-    const bounds=await select.evaluate(el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,width:innerWidth};});
+    const bounds=await lock.evaluate(el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,width:innerWidth};});
     assert(bounds.left>=0&&bounds.right<=bounds.width,'Environment control stays visible at width '+width);
   }
   await page.setViewportSize(originalViewport);

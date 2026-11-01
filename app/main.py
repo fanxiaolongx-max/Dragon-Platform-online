@@ -43,6 +43,15 @@ def create_app() -> FastAPI:
 
     app.middleware("http")(environment.guard)
 
+    # 页面、脚本、样式每次向服务器核对（未变化时 304），更新应用后浏览器不会继续用缓存里的旧版本。
+    @app.middleware("http")
+    async def revalidate_static(request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if request.method == "GET" and (path.endswith(("/", ".html", ".js", ".css")) or path in ("/dev", "/api-test")):
+            response.headers.setdefault("Cache-Control", "no-cache")
+        return response
+
     # 注册路由（全部挂到根级 /api）
     app.include_router(health.router, prefix="/api")
     app.include_router(report.router, prefix="/api")

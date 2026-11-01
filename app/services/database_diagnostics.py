@@ -56,7 +56,7 @@ def configuration():
             'configurationOrigins': configuration_origins(), 'runtime': snapshot(),
             'businessValueShape': {'length': len(settings.BUSINESS_DATASOURCE_NAME), 'hasOuterWhitespace': settings.BUSINESS_DATASOURCE_NAME != settings.BUSINESS_DATASOURCE_NAME.strip(), 'hasControlCharacters': any(ord(c) < 32 for c in settings.BUSINESS_DATASOURCE_NAME)}}
 
-def datasource_match(body):
+def datasource_match(body, candidate=''):
     # Compare names only; do not export other data sources, credentials or connection strings.
     candidates = [body.get('data'), body.get('rows'), body.get('list')]
     data = body.get('data')
@@ -71,7 +71,9 @@ def datasource_match(body):
             names.extend(str(row[key]) for key in ('name', 'datasourceName', 'dataSourceName', 'groupName') if isinstance(row.get(key), str))
     return {'configuredBusinessName': group_name(configured), 'configuredNameListed': configured in names if names or rows == [] else None,
             'catalogParsed': rows is not None, 'catalogItemCount': len(rows) if rows is not None else None,
-            'namesComparable': bool(names) or rows == [], 'otherNamesExported': False}
+            'namesComparable': bool(names) or rows == [], 'otherNamesExported': False,
+            # 管理员输入的候选组名（如其他正常应用使用的组名）只回答是否在清单中，不查询该库、不列出其他名称。
+            **({'candidateName': group_name(candidate), 'candidateListed': candidate in names if names or rows == [] else None} if candidate else {})}
 
 
 def manifest(table='', full=False):
@@ -110,7 +112,7 @@ def statement(key, table):
         return 'netcare', f'SELECT COUNT(*) AS probe_count FROM {table} WHERE 1=0'
     raise QueryValidationError('未知测试项 / Unknown probe')
 
-async def probe(key, table=''):
+async def probe(key, table='', candidate=''):
     table = identifier(table)
     if key not in {item[0] for item in CHECKS} | {'scan-columns'}:
         raise QueryValidationError('未知测试项 / Unknown probe')
@@ -134,9 +136,14 @@ async def probe(key, table=''):
                 body = await db._base_request('GET', db._base_datasources_url())
                 if body.get('code') not in (0, '0'):
                     raise QueryValidationError(error_summary(body) or '数据源接口业务响应失败')
-                result['datasourceMatch'] = datasource_match(body)
+                result['datasourceMatch'] = datasource_match(body, str(candidate or '').strip()[:128])
                 if result['datasourceMatch']['configuredNameListed'] is False:
                     result.update(status='warning', message='运行时业务组未在基座数据源清单中匹配；请核对基座分配、注入值与旧 .env，不会自动切换其他库')
+                listed = result['datasourceMatch'].get('candidateListed')
+                if listed is not None:
+                    note = ('候选业务组在基座清单中：可在基座应用配置里改为分配该业务库（或设置 BUSINESS_DATASOURCE_NAME）后重启应用' if listed
+                            else '候选业务组也不在基座清单中')
+                    result['message'] = '；'.join(filter(None, [result.get('message', ''), note]))
             elif key == 'guard':
                 for sql in ('DELETE FROM t_report_config', 'CREATE TABLE diagnostic_probe(id INT)', "ATTACH DATABASE 'other.db' AS other"):
                     try:

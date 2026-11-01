@@ -106,6 +106,17 @@ class DiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(matched['status'], 'pass')
         self.assertIs(matched['datasourceMatch']['configuredNameListed'], True)
 
+    async def test_candidate_group_is_only_compared_never_queried_or_listed(self):
+        self.catalog = [{'name': 'risk-business'}, {'name': 'third-business'}]
+        result = await suite.probe('datasources', candidate='risk-business')
+        self.assertEqual(result['status'], 'warning')
+        self.assertIs(result['datasourceMatch']['candidateListed'], True)
+        self.assertIn('候选业务组在基座清单中', result['message'])
+        self.assertNotIn('third-business', json.dumps(result))
+        self.assertEqual(len(self.sent), 1)
+        missing = await suite.probe('datasources', candidate='nowhere')
+        self.assertIs(missing['datasourceMatch']['candidateListed'], False)
+
     async def test_process_and_base_request_ids_are_exported_without_payload_or_credentials(self):
         result = await suite.probe('business-basic')
         self.assertEqual(result['runtime']['pid'], __import__('os').getpid())
