@@ -730,7 +730,8 @@ body.left-dragging{user-select:none;cursor:col-resize}
 
   <div class="foot">AiOps-Report · 与工程同源部署 · 无第三方依赖 · <span style="font-weight:600">v1.5.9</span></div>
 
-  <script>
+  <script src="shared/ai-diagnostics.js"></script>
+<script>
 /*
  * ADCChat v1.4 一体版 F12 脚本
  * 自动识别测试/生产环境；仅在对应环境的同源页面运行，各自重新捕获会话。
@@ -795,6 +796,8 @@ body.left-dragging{user-select:none;cursor:col-resize}
 
   // 不记录、输出或持久化接口返回的用户信息和 token。
   async function readUiConfigCsrf() {
+    const diagnostic=window.AiOpsDiagnostics?.capture()||(()=>{});
+    diagnostic("csrf_read",{status:"running"});
     checkOrigin();
     const response = await fetchRequest(ORIGIN + USER_INFO_PATH, {
       method: "GET", credentials: "include", redirect: "error",
@@ -805,11 +808,13 @@ body.left-dragging{user-select:none;cursor:col-resize}
     if (typeof data.csrf_token !== "string" || !data.csrf_token.trim()) {
       throw new Error("用户信息接口未返回有效 csrf_token；请检查登录和接口鉴权。");
     }
+    diagnostic("csrf_ready",{present:true,source:"ui-config",httpStatus:response.status});
     return data.csrf_token;
   }
 
   async function readCurrentCsrf() {
-    try { return readStoredCsrf(); }
+    const diagnostic=window.AiOpsDiagnostics?.capture()||(()=>{});diagnostic("csrf_read",{source:"browser-storage"});
+    try { const value=readStoredCsrf();diagnostic("csrf_ready",{present:true,source:"browser-storage"});return value; }
     catch { return readUiConfigCsrf(); }
   }
 
@@ -828,6 +833,8 @@ body.left-dragging{user-select:none;cursor:col-resize}
   // 不重试创建会话：网络中断时不能假定服务端没有创建。
   // 页面校验头沿用当前捕获值；若接口拒绝，请重新捕获，不能伪造刷新。
   async function newSession(options = {}) {
+    const diagnostic=window.AiOpsDiagnostics?.capture()||(()=>{});
+    diagnostic("session_init",{status:"running"});
     checkOrigin();
     if (controller || pageAsk) throw new Error("请等待当前请求结束。");
     if (!config) throw new Error("请先捕获或 configure 当前环境的页面头和模型配置。");
@@ -860,6 +867,7 @@ body.left-dragging{user-select:none;cursor:col-resize}
       });
       if (!response.ok) throw new Error("创建会话 HTTP " + response.status);
       const result = await response.json();
+      diagnostic("session_init",{status:response.ok?"success":"error",request:{method:"POST",path:INIT_PATH,body:{...route,agent_name:"agent_OperationsDigitalHuman"}},response:result,httpStatus:response.status});
       if (result.success !== true || typeof result.session_id !== "string" ||
           !result.session_id.trim()) throw new Error("创建会话未返回成功状态及 session_id。");
       config = { ...current, sessionId: result.session_id };
@@ -978,7 +986,10 @@ body.left-dragging{user-select:none;cursor:col-resize}
 
   // 仅首次借用网页的真实发送流程。只发送用户当前的问题，不额外发送初始化问题。
   async function askViaPage(question, options) {
+    const diagnostic=window.AiOpsDiagnostics?.capture()||(()=>{});
+    diagnostic("composer_found",{status:"running"});
     const {w: owner, el} = findComposer();
+    diagnostic("composer_found",{tag:el.tagName,frameId:"aiBarFrame",empty:true});
     const maxLength = Number(el.getAttribute("maxlength")) || 0;
     if (maxLength > 0 && question.length > maxLength) {
       throw new Error("原 ADC 页面输入框最多 " + maxLength + " 字，本次提问 " + question.length + " 字，无法经页面发送。");
@@ -994,6 +1005,7 @@ body.left-dragging{user-select:none;cursor:col-resize}
     void responseReady.catch(() => {}); // 提交前被停止时也处理 Promise 拒绝。
     const timer = setTimeout(() => active.abort(), options.timeoutMs ?? 180000);
     function restore() {
+      diagnostic("capture_restore",{hookCount:hooks.size});
       for (const [w, hook] of hooks) {
         try { if (w.fetch === hook.wrapped) w.fetch = hook.previous; } catch {}
       }
@@ -1001,6 +1013,7 @@ body.left-dragging{user-select:none;cursor:col-resize}
     function fail(error) {
       if (settled) return;
       settled = true;
+      diagnostic("failed",{error:error.message});
       restore();
       rejectResponse(error);
     }
@@ -1021,6 +1034,7 @@ body.left-dragging{user-select:none;cursor:col-resize}
             if (method === "POST" && url.origin === ORIGIN && !url.search &&
                 (url.pathname === PATH || url.pathname === INIT_PATH)) {
               request = new w.Request(input instanceof w.Request ? input.clone() : input, args[1]);
+              void request.clone().text().then(text=>{try{diagnostic("request",{request:{method,path:url.pathname,body:JSON.parse(text)},headerNames:[...request.headers.keys()]});}catch(_){}});
             }
           } catch {}
           const result = previous.apply(this, args);
@@ -1030,8 +1044,10 @@ body.left-dragging{user-select:none;cursor:col-resize}
             void Promise.all([request.text(), copiedResponse]).then(async ([text, response]) => {
               if (settled) { void response.body?.cancel().catch(() => {}); return; }
               const body = JSON.parse(text);
+              diagnostic("response",{httpStatus:response.status,contentType:response.headers.get("content-type"),request:{method:"POST",path:new URL(request.url).pathname,body},requestId:response.headers.get("x-request-id")||""});
               if (new URL(request.url).pathname === INIT_PATH) {
                 const data = await response.json();
+                diagnostic("session_init",{status:response.ok?"success":"error",response:data,httpStatus:response.status});
                 if (data.success && body.agent_name === "agent_OperationsDigitalHuman") {
                   runtimeRoute = validateRoute(body.url, body.service_name);
                 }
@@ -1050,6 +1066,7 @@ body.left-dragging{user-select:none;cursor:col-resize}
                 pageHeaders: Object.fromEntries(PAGE_KEYS.map(k => [k, request.headers.get(k) ??
                   (k === "x-gde-src-page" ? SOURCE_PAGE : "")])),
                 referrer: request.referrer && request.referrer !== "about:client" ? request.referrer : REFERRER });
+              diagnostic("session_capture",{sessionId:body.session_id,agent:body.agent,model:body.model,headerNames:PAGE_KEYS,presentHeaderNames:PAGE_KEYS.filter(key=>request.headers.has(key))});
               options.onUpdate?.("");
               settled = true;
               restore();
@@ -1065,8 +1082,10 @@ body.left-dragging{user-select:none;cursor:col-resize}
     }
     try {
       hook(window, new Set());
+      diagnostic("capture_hook",{hookCount:hooks.size,mode:"clone-response-no-resend"});
       if (!hooks.size) throw new Error("无法监听当前聊天页的 fetch。");
       console.info("[自动首次发送] 正在通过原网页发送当前问题，无需预先手动提问。");
+      diagnostic("composer_fill",{prompt:question,promptChars:question.length});
       if ("value" in el) {
         const proto = el.tagName === "TEXTAREA" ? owner.HTMLTextAreaElement.prototype : owner.HTMLInputElement.prototype;
         const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
@@ -1081,6 +1100,7 @@ body.left-dragging{user-select:none;cursor:col-resize}
       if (active.signal.aborted) throw new Error("网页发送已停止。");
       el.focus();
       const submit = el.closest("form")?.querySelector('button[type="submit"], input[type="submit"]');
+      diagnostic("composer_submit",{method:submit&&!submit.disabled?"submit-click":"enter-key",attempt:1});
       if (submit && !submit.disabled) submit.click();
       else el.dispatchEvent(new owner.KeyboardEvent("keydown", {
         key:"Enter", code:"Enter", keyCode:13, which:13, bubbles:true, cancelable:true, composed:true
@@ -1108,6 +1128,8 @@ body.left-dragging{user-select:none;cursor:col-resize}
   }
 
   async function runAsk(question, options = {}, observedResponse = null) {
+    const diagnostic=window.AiOpsDiagnostics?.capture()||(()=>{});
+    diagnostic("stream_start",{status:"running"});
     checkOrigin();
     if (!config) throw new Error("ask 已安装，但尚未捕获配置。请先在原网页正常发送一次消息，等网页回答结束后再用 ask。");
     if (controller) throw new Error("当前标签页已有提问，请等待结束。");
@@ -1169,7 +1191,7 @@ body.left-dragging{user-select:none;cursor:col-resize}
       const text = answerText();
       if (text !== lastAnswer) {
         lastAnswer = text;
-        if (text) console.info("[回答更新]", text);
+        if (text) console.info("[回答更新]",text.length+" chars");
         options.onUpdate?.(text); // 页面可用 textContent 展示当前累计正文。
       }
     }
@@ -1178,13 +1200,16 @@ body.left-dragging{user-select:none;cursor:col-resize}
       const data = block.split(/\r\n|\n|\r/).filter(x => x.startsWith("data:"))
         .map(x => x.slice(5).replace(/^ /, "")).join("\n");
       if (!data) return; // 忽略心跳注释及空帧。
-      if (data.trim() === "[DONE]") { finished = true; return; }
+      if (data.trim() === "[DONE]") { diagnostic("stream_done",{marker:"[DONE]"});finished = true; return; }
       const raw = JSON.parse(data), event = raw.payload || raw;
       const p = event.properties || {};
       events.set(event.type || "?", (events.get(event.type || "?") || 0) + 1);
-      if (p.session_id && p.session_id !== current.sessionId) { otherSession++; return; }
+      if (p.session_id && p.session_id !== current.sessionId) { otherSession++;diagnostic("stream_child",{event}); return; }
       if (event.id && seen.has(event.id)) return;
       if (event.id) seen.add(event.id); // 防止相同增量事件重复拼接。
+      const part=p.part||parts.get(p.part_id);
+      const diagnosticStage=part?.type==="tool"?"stream_tool":part?.type==="reasoning"?"stream_reasoning":part?.type==="text"||event.type==="message.part.delta"?"stream_text":"stream_event";
+      diagnostic(diagnosticStage,{event,...(part?.type==="tool"?{name:part.tool||"",status:part.state?.status||"running",...(part.state?.status==="error"?{error:String(part.state.error||"Embedded AI tool failed")}:{} )}:{})});
       if (event.type === "session.error" || event.type === "error") {
         const error = p.error || p;
         throw new Error(error.message || error.data?.message || "服务端返回错误事件。");
@@ -1228,7 +1253,8 @@ body.left-dragging{user-select:none;cursor:col-resize}
         // 已确认成功的叠加请求同时携带这两个头，整理版暂保留兼容行为。
         // 单独移除 csrftoken 的真实接口验证尚未完成。
         headers.set("csrftoken", token);
-        console.info("[开始提问]", question);
+        diagnostic("request",{request:{method:"POST",path:PATH,body:{message:question,session_id:current.sessionId,agent:current.agent,model:current.model}},headerNames:[...headers.keys()]});
+        console.info("[开始提问]",question.length+" chars");
         response = await fetchRequest(ORIGIN + PATH, {
           method: "POST", headers, credentials: "include", redirect: "follow",
           referrer: current.referrer, signal: active.signal,
@@ -1237,17 +1263,19 @@ body.left-dragging{user-select:none;cursor:col-resize}
         });
       }
       validateResponseUrl(response, PATH);
+      diagnostic("response",{httpStatus:response.status,contentType:response.headers.get("content-type"),requestId:response.headers.get("x-request-id")||"",observedResponse:!!observedResponse});
       console.info("[HTTP 状态]", response.status);
       const type = response.headers.get("content-type") || "";
       if (!response.ok || /application\/json/i.test(type)) {
         let detail = "";
-        try { const e = await response.json(); detail = [e.code, e.message].filter(Boolean).join(" "); }
+        try { const e = await response.json(); diagnostic("failed",{response:e,httpStatus:response.status}); detail = [e.code, e.message].filter(Boolean).join(" "); }
         catch { /* 非 JSON 错误体只报告 HTTP 状态，避免输出登录页面内容。 */ }
         throw new Error("HTTP " + response.status + (detail ? " " + detail : " 未返回 SSE"));
       }
       if (/text\/html/i.test(type)) throw new Error("返回 HTML 页面，请检查登录状态。");
       if (!response.body) throw new Error("响应体为空。");
       reader = response.body.getReader();
+      active.signal.addEventListener("abort",()=>{void reader.cancel().catch(()=>{});},{once:true});
       const decoder = new TextDecoder();
       while (!finished) {
         const { done, value } = await reader.read();
@@ -1264,13 +1292,16 @@ body.left-dragging{user-select:none;cursor:col-resize}
           break;
         }
       }
+      if (!finished)diagnostic("stream_incomplete",{summary:runSummary(),partialText:lastAnswer});
       if (!finished) throw new Error("流提前结束，当前正文仅为部分结果，不能判定完成。");
       lastRun = runSummary();
+      diagnostic("stream_done",{summary:lastRun,text:lastAnswer});
       if (!lastAnswer) {
         const delegated = delegatedText();
         if (delegated) {
           lastAnswer = compactText(delegated.text);
           lastRun.fallbackFrom = delegated.from;
+          diagnostic("fallback",{from:delegated.from,text:lastAnswer,summary:lastRun});
           console.warn("[正文为空] 改用工具 " + delegated.from + " 的结果", lastRun);
           options.onUpdate?.(lastAnswer);
           return lastAnswer;
@@ -1280,9 +1311,10 @@ body.left-dragging{user-select:none;cursor:col-resize}
         throw new Error("会话已结束但没有助手正文（本轮收到：" + (kinds || "无助手内容") + (seenTools ? "；工具 " + seenTools : "") +
           (lastRun.otherSessionEvents ? "；子会话事件 " + lastRun.otherSessionEvents + " 条" : "") + "）。智能体可能在用自己的工具处理，而没有直接回答。");
       }
-      console.info("[最终回答]", lastAnswer);
+      console.info("[最终回答]",lastAnswer.length+" chars");
       return lastAnswer;
     } catch (error) {
+      diagnostic(active.signal.aborted?"stopped":"failed",{error:error.message,summary:runSummary(),partialText:lastAnswer,serverCancellationConfirmed:false});
       if (active.signal.aborted) throw new Error("已停止读取或超过超时限制；不代表服务端任务已取消。");
       throw error;
     } finally {

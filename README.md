@@ -5,11 +5,20 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.5.9`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.5.10`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
 ---
+
+## 1.5.10 更新说明
+
+- 格子旁显示真实执行阶段；调用记录可展开模型、工具和应用接口的实际请求与返回，支持详细 JSON 日志导出。
+- 隐藏 ADC 页面准备、会话创建、输入与提交、响应捕获、SSE、隐式工具和子会话事件纳入诊断；凭据脱敏，关闭记录时隐藏导出按钮。
+- 修复仅文字请求残留指标卡、总结超出已确认句数等问题；允许恢复图表或卡片，保留数据与计算，统一格子例外、章节样式和整体默认规则的优先级。
+- README 增加完整工作流程与隐藏 ADC 时序图；新增单元与本地浏览器链路测试并接入 CI。
+
+本版不迁移或批量重写历史月报。更新应用后刷新页面，原有问题格子需重新生成最终提示词并运行。真实内网 ADC 的登录与页面结构仍需在目标环境验收。
 
 ## 🌟 核心特性
 
@@ -61,7 +70,7 @@ Dragon-Platform-online/
 ├── requirements.txt            # Python 依赖清单
 ├── run.py                      # 本地独立启动脚本 (uvicorn)
 ├── _platform_host.py           # Dragon Platform 宿主反向代理前缀适配层
-├── AiOps-Report.version        # 版本标识文件 (1.4.4)
+├── AiOps-Report.version        # 版本标识文件（以文件内容为准）
 └── README.md                   # 项目说明文档
 ```
 
@@ -226,10 +235,12 @@ python3 scripts/build_release.py
 
 ## 📝 AI 月报
 
+[完整工作流程与隐藏 ADC 时序图](#ai-月报完整工作流程当前实现) · [调用记录与日志导出](#ai-月报调用记录与隐藏-adc-诊断)
+
 主页就是 AI 月报编辑器（移植自 Dragon Platform `/monthly`，界面、格子对话、提示词总结、配方编译、沙箱运行、章节样式、整体风格、导出等行为一致）。区别：
 
-- **数据直接来自业务库**：格子的配方数据来源是只读 SQL（`{"kind":"sql","source":"netcare"|"app","sql":"…","monthOffset":0}`），时间条件用占位符 `{{month}}` `{{yyyymm}}` `{{month_start}}` `{{month_end}}` `{{next_month_start}}` `{{prev_month}}` `{{year}}` `{{month_num}}`。切换报告月份时服务端按新月份执行 SQL、沙箱重新计算，不调用 AI；文字总结点「更新总结」重写。格子对话里 AI 用 `list_tables` / `describe_table` / `query` 查表结构和样本，编译后先按报告月份试跑 SQL，出错会交回 AI 修正。
-- **AI 在浏览器里调用**：内网只有嵌入的 ADC 网页对话，`static/air/ai-backend.js` 把平台服务端的对话与编译逻辑搬到页面里，经 Dragon Claw 会话调度调用 ADCChat；工具调用用 `{"tool":…,"args":…}` JSON 文本协议。每次 AI 请求新开一个 ADC 会话，互不串上下文；新建会话失败时沿用当前会话并声明是新任务。格子对话右上角「调用记录」可查看每次发给模型的内容和返回。
+- **数据直接来自业务库**：格子的配方数据来源是只读 SQL（`{"kind":"sql","source":"netcare"|"app","sql":"…","monthOffset":0}`），时间条件用占位符 `{{month}}` `{{yyyymm}}` `{{month_start}}` `{{month_end}}` `{{next_month_start}}` `{{prev_month}}` `{{year}}` `{{month_num}}`。切换报告月份时服务端按新月份执行 SQL、沙箱复用配方重新计算；补齐总览摘要或点「更新总结」改写文字时仍会调用 AI。格子对话里 AI 用 `list_tables` / `describe_table` / `query` 查表结构和样本，编译后先按报告月份试跑 SQL，出错会交回 AI 修正。
+- **AI 在浏览器里调用**：内网只有嵌入的 ADC 网页对话，`static/air/ai-backend.js` 把平台服务端的对话与编译逻辑搬到页面里，经 Dragon Claw 会话调度调用 ADCChat；工具调用用 `{"tool":…,"args":…}` JSON 文本协议。每次月报 AI 操作排队取得 ADC 通道，按需通过原页面新建对话；操作内部多轮复用会话，新建失败时沿用当前会话并声明是独立任务。格子对话右上角「调用记录」可查看每次发给模型的内容和返回。
 - **存储在应用库**：一份月报 = `t_report_template` 一行（`description` 以 `ai-report:` 开头，`content` 为骨架 JSON）；一个格子 = `t_report_block` 一行（`chart_type='ai-cell'`，`block_key` 为格子 id，`content_html` 为本月 HTML，`chart_data` 为配方 / 对话 / 结果）；格子提示词 = `t_report_config` 的 `section='prompt'` 行，整体风格提示词 = `section='style'` 且 `block_id` 为空的行。提示词以配置行为准，可在开发者模式「AI 月报」接口或 Dragon Claw（`report_outline` / `cell_upsert` / `cell_delete`，写入需确认）里改，下次打开月报生效；其它 section 的配置行保存时不会被动到，可用于以后扩展的参数。
 - **方言**：启动时探测应用库是否把反斜杠当转义符（MySQL 是、SQLite 否），写入配方代码等含反斜杠的内容时按需转义。
 - 暂不支持：LOGO 图片对话与图库、Outlook MSG 导出（HTML 与打印 / PDF 可用）。
@@ -245,6 +256,149 @@ python3 scripts/build_release.py
 ## 📄 License
 
 Internal Tooling Project · [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
+
+
+### AI 月报完整工作流程（当前实现）
+
+本节描述当前安装应用的代码链路。主流程与大平台一致，但**原生内网模式下，AI 通过隐藏 ADC 原聊天页面调用；应用服务端负责数据和文档，不直接调用模型**。
+
+#### 1. 从需求到配方、数据与月报结果
+
+```mermaid
+flowchart TD
+    User["用户发送格子需求或修改要求"] --> Context["收集报告月份、对话、当前提示词、整体/章节样式和大纲"]
+    Context --> Dispatch["浏览器 ai-backend.js 执行对应 AI 任务"]
+    Dispatch --> Queue["Dragon Claw：按格子排队，取得唯一 ADC 通道"]
+    Queue --> ADC["隐藏原页面发送；捕获响应副本并解析 SSE"]
+    ADC --> Kind{"模型返回 JSON 类型"}
+    Kind -- "tool" --> Tool["浏览器校验工具名及参数；调用应用 API"]
+    Tool --> Execute["POST /api/agent/execute：list_tables / describe_table / query"]
+    Execute --> ToolResult["成功、空结果或错误，作为工具结果再发给 ADC"]
+    ToolResult --> ADC
+    Kind -- "answer" --> Answer["显示回答，本轮结束"]
+    Kind -- "ask" --> Ask["显示澄清问题和可点击选项"]
+    Ask --> User
+    Kind -- "ready，必要时检查冲突" --> Prompt["浏览器总结最终提示词"]
+    Prompt --> PromptOK{"是否仍夹带已取消的旧展示要求？"}
+    PromptOK -- "是，最多 3 次提示词尝试" --> Prompt
+    PromptOK -- "否" --> Rule["写入展示约束；清除仅文字请求对应的旧子块布局"]
+    Rule --> Compile["浏览器再次调用 ADC 编译 sources / compute / render / narrative"]
+    Compile --> Trial["POST /api/air/run-data：按报告月份试跑配方 SQL"]
+    Trial --> SQLValid{"SQL 来源可执行？"}
+    SQLValid -- "否，错误交回模型；无法确定则询问" --> Compile
+    SQLValid -- "是" --> RunData["运行配方时再次按月份读取真实数据"]
+    RunData --> DataValid{"来源成功返回？"}
+    DataValid -- "失败或缺少来源" --> Retry["记录错误，限次修正；不能把失败当作 0"]
+    DataValid -- "成功，允许空行集" --> Sandbox["断网沙箱 compute 计算、render 生成 HTML 与组件"]
+    Sandbox --> NeedSummary{"配方需要文字总结？"}
+    NeedSummary -- "是" --> Summary["通过 ADC 写总结；超过用户确认句数则最多尝试 3 次"]
+    NeedSummary -- "否" --> Layout["检查标题、格子尺寸和布局"]
+    Summary --> Layout
+    Layout --> Done{"运行和展示检查通过？"}
+    Done -- "否" --> Retry
+    Retry -- "最多 3 次编译运行尝试" --> Compile
+    Done -- "是" --> Show["更新对应格子的结果；不抢走用户当前选择"]
+    Show --> Save["用户点击保存：写入应用库的月报、格子和提示词表"]
+    ADC -. "操作和响应事件" .-> Trace["思考中括号显示真实阶段；开启记录后可展开详情"]
+    Execute -.-> Trace
+    Trial -.-> Trace
+    Sandbox -.-> Trace
+    Trace --> Log["开启记录时显示导出日志：当前格子 JSON"]
+```
+
+图中取数路径均是**当前应用前缀下**的 `/api/...`；基座或平台托管部署会为页面添加自己的路径前缀，不应在代码中硬编码部署域名。`ready` 会自动总结提示词并生成格子；手动“重新生成最终提示词”和“再试一次”也进入同一套校验。
+
+#### 2. 隐藏 ADC 页面实际上做了什么
+
+下面的时序会用于对话、提示词总结、配方编译、总结重写等需要 AI 的阶段，不只是用户的第一条消息。
+
+```mermaid
+sequenceDiagram
+    participant Report as AI 月报 / ai-backend.js
+    participant Lane as Dragon Claw 会话调度
+    participant Frame as 隐藏 ADC 原聊天页
+    participant Capture as ADCChat 捕获与 SSE 解析
+    participant Service as ADC 服务
+    Report->>Lane: 提交格子任务、取消令牌、阶段与诊断回调
+    Lane-->>Report: queued：等待通道
+    Lane->>Lane: 取得通道，绑定当前任务的诊断观察者
+    alt 已有会话且可找到原页面新建入口
+        Lane->>Frame: 点击原页面自己的“新建对话”
+    else 尚无会话
+        Lane->>Frame: 首问由原页面正常初始化
+    else 无法新建
+        Lane->>Lane: 沿用当前会话，添加“全新独立任务”声明并记录降级
+    end
+    loop 同一任务的多轮模型往返
+        Lane->>Frame: 按需加载/隐身展开，等待唯一可用且无草稿的输入框
+        Lane->>Lane: 临时排除外层输入框，避免误填月报编辑器
+        Capture->>Frame: 挂接同源 fetch 观察，仅克隆响应，不重发请求
+        Lane->>Frame: 填写实际任务提示词，触发一次提交
+        Frame->>Service: 原页面 POST 发送，沿用其正常登录和校验流程
+        Service-->>Frame: 原页面读取自己的响应
+        Service-->>Capture: 捕获匹配本轮问题的响应副本
+        Capture->>Capture: 验证响应、捕获会话配置、解析 SSE
+        Capture-->>Report: 阶段、正文、隐式工具/子会话事件、错误或不完整流
+        Capture->>Frame: 恢复临时 fetch 监听
+        Lane->>Frame: 恢复隐身状态与外层输入框状态
+        Report->>Report: 解析工具 JSON，或接受 answer / ask / ready / recipe
+    end
+    Lane->>Lane: 释放通道，下一格子任务才可进入
+```
+
+- 原生 ADC 上，每次模型提问都使用原页面发送流程；不会为捕获响应额外再发一遍相同问题。
+- 新建对话以**一次月报 AI 操作**为边界，同一操作内的工具反馈继续使用该会话；独立子任务可通过新任务声明隔离上下文，不能简单理解成“每一次模型往返都新建会话”。
+- 输入框已有草稿、无法唯一定位、登录/校验异常、返回非 SSE、流提前结束等都会走错误路径；不能把“收到 HTTP 响应”当作“获得完整模型答案”。
+- ADC 自身可能仍使用工具或子会话；这些事件会记录。正文为空且现有解析器找到明确的工具结果时，会记录正文提取来源；不能据此声称已看到 ADC 内部所有不可观测行为。
+- 在 Dragon Platform 托管模式，平台兼容层可将 ADC 客户端替换为 `__platform/adc/...` 桥接通道；`application-json-v1` 保证月报自己的 JSON 工具协议不被第二套工具循环替换。导出中的通道信息用于区分桥接与原生隐藏页面模式。
+
+#### 3. 模型看见的工具与真实请求的对应关系
+
+| 模型工具 / 前端任务 | 实际执行位置 | 返回及后续处理 |
+| --- | --- | --- |
+| `list_tables` | `POST /api/agent/execute`，工具参数含 `source`、`keyword` | 返回实际表目录及备注，成功无匹配也记录 |
+| `describe_table` | 同一执行接口，工具参数含 `source`、`table` | 返回字段、类型及备注，错误返回模型处理 |
+| `query` | 同一执行接口，只读 SQL；先替换报告月份占位符 | 最多 50 行样本，用于确认字段、取值和时间格式 |
+| `list_report_cells` | 直接读取前端传入的本份月报大纲 | 不发 HTTP，不伪造“查库成功”记录 |
+| `/api/ai-report/cell/chat`、`cell/prompt`、`cell/compile`、`cell/narrative` | `window.API` 的浏览器逻辑路由，交给 `ai-backend.js` 调 ADC | **不是小平台服务端同名模型 API** |
+| 逻辑 `/api/ai-report/run-data` | 映射成应用 `POST /api/air/run-data` | Python 校验来源，按月份执行 SQL；每来源最多 1000 行 |
+| `source: netcare` / `source: app` | 应用 `db.py` 经基座 REST 数据契约分别访问业务库/应用库 | 复用既有数据源、身份注入及权限边界，不新增数据库访问模式 |
+
+模型根据需要选择工具，并非每次都遍历所有表。每个工具循环前 8 轮可继续提供工具，总模型循环最多 10 轮；提示词校验、句数校验和编译运行的上限属于不同阶段，均不是无限重试。模型只接收按长度限制整理的工具结果；开启记录时保留完整的实际工具/HTTP 返回，并标记给模型的内容是否截断。
+
+#### 4. 已确认要求如何贯穿各层提示词
+
+```mermaid
+flowchart TD
+    Safe["始终保留：真实数据、只读与权限、沙箱、响应协议"] --> Latest["当前格子最新确认要求或手动编辑；局部例外优先"]
+    Latest --> Styles["未被替换的章节样式 → 整体风格默认值"]
+    Styles --> Hidden["隐藏提示词默认值；旧提示词/配方仅作参考"]
+    Hidden --> SummaryCheck["最终提示词检查：剔除已取消的旧组件要求，必要时重写"]
+    SummaryCheck --> Presentation{"展示约束"}
+    Presentation -- "仅文字" --> TextOnly["保留配方 sources/compute；render 不生成可视化组件；narrative 写文字"]
+    Presentation -- "图表 / 表格 / 指标卡" --> Visual["按新展示要求编译，不残留旧的仅文字限制"]
+    TextOnly --> Verify["句数、标题、尺寸、布局检查；错误可修正，用户可再次改需求"]
+    Visual --> Verify
+```
+
+整体风格和章节样式是默认规则，不把“支持某组件”解释为“每格必须添加组件”。章节统一样式保留原来的数据来源和计算，可按明确要求调整 `render` 与必要的 `narrative`；不能重加格子已经取消的卡片，也不能两处重复总结。窄格子默认上下排，但用户明确要求左右并排时保留该意图；放不下仍由布局检查处理。
+
+其它入口复用相同规则：整体风格对话修改全篇默认条目与主题；章节对话修改本章样式；报头/页脚字段对话单独生成字段文字；换月优先复用配方重新取数，补齐总览所需摘要或更新文字总结时仍会调用 AI。保存使用应用库的 `t_report_template`、`t_report_block`、`t_report_config`；报告 HTML/PDF/MSG 导出与排障日志 JSON 是不同用途。
+
+#### 5. 用户看到的阶段、记录与失败处理
+
+| 状态 | 页面反馈与日志行为 |
+| --- | --- |
+| 未开启调用记录 | 思考旁括号仍显示真实阶段，不保存本次详细请求记录，不显示“导出日志” |
+| 开启调用记录 | 可在操作进行中展开模型往返、原页面操作、应用 HTTP 请求和结果；保留空结果及失败 |
+| HTTP 200 但业务 `code` 非 0 | 记录为业务失败，保留请求编号、状态、错误和实际响应，不当作正常数据 |
+| 停止生成 | 取消当前月报的活动/排队任务与沙箱等待，忽略迟到结果；不能据此断言远端任务已停止 |
+| 尝试次数耗尽 | 显示失败原因，尽量恢复上次可用内容或保留可用结果，供修改要求后重试；不自动保存 |
+| 导出日志 | 当前格子的 JSON：时间线、请求/返回、SQL 参数与实际执行 SQL、耗时、错误、重试、ADC/iframe 状态及浏览器环境 |
+
+记录只在本页内存中保留，每格子最近 40 次操作；每次操作保留最多 2000 条响应流事件，超限明确记录省略数量，模型、月报工具和 HTTP 调用不受该流事件上限丢弃。Cookie、CSRF、页面校验头、密钥等凭据值脱敏，只记录必要的存在性标志与头名称。日志可能含业务结果，按排障需要保存。
+
+目前机械校验重点覆盖明确中文的仅文字/句数要求及已记录的展示约束，其它复杂自然语言要求仍需核对实际结果。刷新页面后加载前端修改；已有问题格子需重新生成最终提示词并运行，历史文档不会自动批量改写。隐藏 ADC 链路已通过本地模拟，真实内网的登录、页面结构及部署结果仍需在目标环境验证。
 
 
 ### 默认月报模板（1.4.7）
@@ -314,6 +468,16 @@ Internal Tooling Project · [Dragon Platform](https://github.com/fanxiaolongx-ma
 
 `GET /api/diagnostics/database?table=落地表名&full=false` 返回检查清单，`POST /api/diagnostics/database` 接收 `{id,table}` 执行单项，最长 20 秒。客户端另区分浏览器到应用的网络/非 JSON 错误，导出日志应保留原文件供定位。开发者页面与内嵌兜底副本通过 `python scripts/sync_developer_fallback.py` 同步，CI 校验一致性，避免网关回退到旧版界面。
 
+### AI 月报调用记录与隐藏 ADC 诊断
+
+格子对话的等待文案旁会用括号显示真实执行阶段，覆盖 ADC 通道排队、隐藏页面准备、新建对话、输入框定位、原页面发送、响应流接收、数据工具与沙箱计算。保持原有的隐藏 ADC 页面调用方式，不另行接入模型 API。
+
+开启格子右上角的“调用记录”后，后续操作会实时记录模型实际提示词与回复、数据工具参数与完整返回，以及浏览器到应用接口的 HTTP/业务状态、请求编号与耗时。HTTP 200 的业务错误、空结果、非 JSON、网络中断、停止和流提前结束都有独立状态；SQL 工具同时保留传入参数和替换报告月份后实际执行的 SQL。模型收到的工具结果若被长度限制截断，会明确标记，并保留实际接口返回。
+
+内嵌 ADC 的同源可观测操作也写入记录：隐身展开与恢复、外层输入框临时排除、原页面新建会话或降级为独立任务声明、fetch 监听与恢复、实际提交、会话捕获、SSE 事件，以及 ADC 自身的工具调用与子会话活动。记录登录检查的状态和请求头名称，排除 Cookie、CSRF、页面校验头和其它凭据的值。SDK 内部不可观测操作不标记为已捕获；停止读取不等于已确认服务端取消。
+
+“导出日志”仅在调用记录开启时出现，下载当前格子的 JSON，包含各次请求、完整返回、部分失败记录、时间线、ADC/iframe 状态和浏览器环境。记录仅保留在当前页面内存中，每格子最近 40 次操作，刷新后清空；每次操作保留最多 2000 条响应流事件，超过时明确记录省略数量，模型、月报工具与 HTTP 调用不因该上限被丢弃。日志可能包含实际业务结果，按研发排障需要保存。
+
 ### 应用工具协议（1.5.3）
 
 格子生成通过 `application-json-v1` 标记告诉 Dragon Platform：由月报页面执行自己的 JSON 工具，平台只返回模型正文，不再注入另一套 ADC 查询工具或追加查询依据。普通 Dragon Claw 对话继续使用平台的只读查库工具；原生数字人 ADC 可忽略这个可选参数。平台需同步更新 ADC bridge；新版平台也识别旧版月报的完整任务信封，因此已有页面无需丢弃未保存编辑即可获得修复。
@@ -334,3 +498,9 @@ Internal Tooling Project · [Dragon Platform](https://github.com/fanxiaolongx-ma
 发布包现在包含根目录 `.env`，包含已检查的连接地址、环境身份和业务组默认值。进程环境优先于包内 `.env`；配置文件按应用根目录定位，不依赖启动目录。打包器只允许声明的连接/运行配置，拒绝密码、Token、未知键、URL 内凭据及带查询参数的地址；本机其他 `.env.*`、数据、日志和虚拟环境仍不打包。
 
 按部署者要求保留 beta/prod 自动识别、候选应用 Schema 探测、业务组别名/目录匹配及必要时的重试。自动适配结果会出现在启动/请求日志与数据库诊断中。候选探测为只读；应用表写入仍受 SQL 写入守卫限制。两套内网的连通性、实际权限和已部署表仍需在目标环境一键测试验收。应用级状态是在进程内更新，重启后会根据注入配置和包内默认值重新识别。
+
+### 格子展示要求与默认规则
+
+用户确认的当前格子展示例外优先于章节和整体风格默认值。仅文字请求会保留数据与计算，移除旧的图表、表格、指标卡和小格子布局要求；最终提示词仍要求这些组件时会退回重写。明确的一句/两句总结会校验句数。恢复图表、指标卡以及手动编辑提示词后可以重新切换展示形式。
+
+隐藏指令中的总结长度、总览展示位置和章节样式改写不再无条件覆盖格子要求；用户指定左右并排时，窄格子的默认纵向堆叠不强制覆盖。空间不足时仍保留布局保护。历史月报不批量重写，原有问题格子需重新生成最终提示词后运行。

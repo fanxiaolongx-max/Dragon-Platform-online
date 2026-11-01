@@ -59,8 +59,10 @@
   }
   const wrap=$('#aiBarFrameWrap');
   function ensureFrame(){
+    const diagnostic=window.AiOpsDiagnostics?.capture()||(()=>{});
     if(onSite && hasClient){
       if(!frame.src){
+        diagnostic('frame_load',{frameId:'aiBarFrame'});
         window.DC_SITE.loadFrame(frame);
         /* 预热：容器折叠时保持透明可见布局，等 iframe 加载并挂载输入框后再移除标记 */
         if(!wrap.classList.contains('open')){
@@ -576,7 +578,7 @@
   const FRESH_NOTE=CTX+'以下是一个全新的独立任务，忽略本会话之前的所有内容。\n';
   async function rawAsk(prompt, onUpdate, signal, protocol, viaPage=false){
     signal?.throwIfAborted();
-    const C=window.ADCChat;
+    const C=window.ADCChat, diagnostic=window.AiOpsDiagnostics?.capture()||(()=>{});
     // first：还没有会话，ADCChat 会经原页面发送；viaPage：明确要求在内嵌原页面里输入并发送（AI 月报每次都这样走）。
     const first=!C.configured || viaPage;
     let stealthed=false;
@@ -585,12 +587,14 @@
     for(const el of document.querySelectorAll('textarea, [contenteditable="true"], [role="textbox"]')){
       if(el.getAttribute('aria-disabled')!=='true'){ el.setAttribute('aria-disabled','true'); muted.push(el); }
     }
+    diagnostic('composer_muted',{count:muted.length});
     try{
       if(first){
+        diagnostic('frame_wait',{viaPage,configured:!!C.configured});
         ensureFrame();
         if(!frameVisible()){
           /* 隐身展开：确保浮窗收起或原页面折叠时 iframe 也有真实布局与 clientRects */
-          wrapEl.classList.add('stealth'); stealthed=true; lockFrame(true);
+          wrapEl.classList.add('stealth'); stealthed=true; lockFrame(true);diagnostic('frame_stealth',{frameId:'aiBarFrame',visible:false});
         }
         let ready=frameHasComposer();
         for(let i=0;!ready && i<300;i++){
@@ -608,14 +612,17 @@
             if((!viaPage && C.configured) || frameHasComposer()){ ready=true; break; }
           }
         }
+        if(ready)diagnostic('frame_ready',{frameId:'aiBarFrame'});
         if(!ready && (viaPage || !C.configured)) throw new Error('内嵌原页面未就绪：聊天输入框未出现，请展开「原 ADC 聊天页」后重试。');
       }
       let latest='';
+      diagnostic('request',{viaPage,promptChars:prompt.length});
       await C.ask(prompt, { protocol, ...(viaPage?{viaPage:true}:{}), onUpdate:t=>{ if(signal?.aborted)return;latest=t||''; onUpdate&&onUpdate(latest); } });
       signal?.throwIfAborted();return latest;
     } finally {
       if(stealthed){ wrapEl.classList.remove('stealth'); lockFrame(false); }
       for(const el of muted) el.removeAttribute('aria-disabled');
+      diagnostic('frame_restore',{restoredInputs:muted.length,stealthed});
     }
   }
   /* 真实 ADC（ADCChat v1.4）上不再调用 newSession 接口：接口直接建的会话缺少原页面的初始化，内网会出现
@@ -623,29 +630,36 @@
      平台本地模拟的客户端没有 version，仍用接口新建。 */
   const realAdc=()=>Boolean(window.ADCChat?.version);
   async function pageNewChat(signal){
+    const diagnostic=window.AiOpsDiagnostics?.capture()||(()=>{});diagnostic('new_chat',{status:'running'});
     ensureFrame();
     const docOf=()=>{try{const d=frame.contentDocument;return d&&d.readyState==='complete'&&d.location.href!=='about:blank'?d:null;}catch(_){return null;}};
     for(let i=0;!docOf()&&i<100;i++){ await new Promise(r=>setTimeout(r,100)); signal?.throwIfAborted(); }
     const doc=docOf();
-    if(!doc) return false;
+    if(!doc){diagnostic('new_chat_fallback',{reason:'frame-not-ready'});return false;}
     // 按钮前常有 ⊕ 等图标：只比较文字部分
     const words=el=>String(el.textContent||'').replace(/[^\p{L}\p{N}]/gu,'').toLowerCase();
     const names=new Set(['新建对话','新对话','新建会话','newchat','newconversation']);
     const hits=[...doc.querySelectorAll('button,[role="button"],a,li,div,span')].filter(el=>names.has(words(el))&&!el.closest('[aria-hidden="true"]'));
     const target=hits.sort((a,b)=>(a.textContent||'').length-(b.textContent||'').length||a.querySelectorAll('*').length-b.querySelectorAll('*').length)[0];
-    if(!target) return false;
+    if(!target){diagnostic('new_chat_fallback',{reason:'new-chat-control-not-found'});return false;}
     (target.closest('button,[role="button"],a')||target).click();
     for(let i=0;i<30;i++){ await new Promise(r=>setTimeout(r,100)); signal?.throwIfAborted(); }
-    return true;
+    diagnostic('new_chat',{status:'success',method:'page-click'});return true;
   }
-  function conversation(owner, fresh, fn, {signal,onState}={}){
-    onState?.('queued');
+  function conversation(owner, fresh, fn, {signal,onState,onDiagnostic}={}){
+    const queuedAt=Date.now();
+    onState?.('queued');onDiagnostic?.({kind:'adc',stage:'queued',at:new Date().toISOString()});
     const run=async()=>{
       signal?.throwIfAborted();
       const C=window.ADCChat;
       if(!(onSite && hasClient)) throw new Error('当前页面无法连接 ADC 对话（需部署到数字人云端同源地址）');
+      const releaseDiagnostics=window.AiOpsDiagnostics?.use(onDiagnostic);
+      const diagnostic=window.AiOpsDiagnostics?.capture()||(()=>{});
+      let frameState={present:!!frame,src:frame?.getAttribute('src')||'',preheated:wrap.classList.contains('preheat'),stealth:wrap.classList.contains('stealth')};
+      try{frameState={...frameState,sameOrigin:!!frame.contentDocument,readyState:frame.contentDocument?.readyState||''};}catch(_){frameState.sameOrigin=false;}
+      diagnostic('lane_acquired',{owner,previousOwner:laneOwner,freshRequested:fresh,queueMs:Date.now()-queuedAt,configured:!!C.configured,realAdc:realAdc(),frame:frameState});
       onState?.('running');laneBusy=owner; updateButtons();
-      const abort=()=>{try{C.stop();}catch(_){}laneOwner=null;};
+      const abort=()=>{diagnostic('stopped',{serverCancellationConfirmed:false});try{C.stop();}catch(_){}laneOwner=null;};
       signal?.addEventListener('abort',abort,{once:true});
       try{
       let pendingNote=false, used=false, pageNext=false;
@@ -654,10 +668,10 @@
         if(!C.configured){ return true; }        // 还没有会话：首问经原页面新建
         if(realAdc()){
           if(await pageNewChat(signal)){ pendingNote=false; pageNext=true; return true; }
-          pendingNote=true; return false;        // 找不到「新建对话」：留在当前会话，提问前声明是新任务
+          pendingNote=true;diagnostic('new_chat_fallback',{reason:'independent-task-note'}); return false;        // 找不到「新建对话」：留在当前会话，提问前声明是新任务
         }
         try{ await (window.AiReportTasks?.wait(C.newSession(),signal)||C.newSession()); signal?.throwIfAborted();pendingNote=false; return true; }
-        catch(e){ if(e.name==='AbortError')throw e;pendingNote=true; return false; }
+        catch(e){ if(e.name==='AbortError')throw e;pendingNote=true;diagnostic('new_chat_fallback',{error:e.message}); return false; }
       };
       let isNew=false;
       if(fresh || (laneOwner && laneOwner!==owner)){ await reset(); isNew=true; }
@@ -665,9 +679,9 @@
       // AI 月报在真实 ADC 上每次都经内嵌原页面发送，和手动提问同一条路，打开「原 ADC 聊天页」就能看到全过程。
       const ask=async(prompt, onUpdate)=>{ const text=(pendingNote&&!used?FRESH_NOTE:'')+prompt; used=true; pendingNote=false; signal?.throwIfAborted();const protocol=owner==='air'?'application-json-v1':undefined;const viaPage=realAdc()&&(owner==='air'||pageNext);pageNext=false;return window.AiReportTasks?.wait(rawAsk(text,onUpdate,signal,protocol,viaPage),signal)||rawAsk(text,onUpdate,signal,protocol,viaPage); };
       // 同一次操作里的独立子任务（如冲突检查）：真实 ADC 上留在同一个对话里并声明是新任务，避免一次操作开出多个对话。
-      const fork=async()=>{ used=false; if(realAdc()&&C.configured){ pendingNote=true; return; } await reset(); };
+      const fork=async()=>{ used=false; if(realAdc()&&C.configured){ pendingNote=true;diagnostic('new_chat_fallback',{reason:'subtask-boundary-note'}); return; } await reset(); };
       signal?.throwIfAborted();return await fn({ask, reset:fork, isNew}); }
-      finally{signal?.removeEventListener('abort',abort); laneBusy=null; updateButtons(); }
+      finally{signal?.removeEventListener('abort',abort);diagnostic('lane_released',{owner});releaseDiagnostics?.(); laneBusy=null; updateButtons(); }
     };
     const next=lane.then(run, run);
     lane=next.catch(()=>{});

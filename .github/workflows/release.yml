@@ -51,17 +51,21 @@ jobs:
           persist-credentials: false
       - name: Install browser test tools
         run: |
-          npm install --prefix /tmp/aiops-ui-tools --no-save --package-lock=false playwright@1.62.1
+          npm install --prefix /tmp/aiops-ui-tools --no-save --package-lock=false playwright@1.62.1 express@4.21.2
           /tmp/aiops-ui-tools/node_modules/.bin/playwright install --with-deps chromium
       - name: Check JavaScript syntax and UI behavior
         env:
           NODE_PATH: /tmp/aiops-ui-tools/node_modules
         run: |
+          node --check static/shared/ai-diagnostics.js
+          node --check static/air/ai-backend.js
+          node --check static/air/trace.js
           node --check static/shared/dragon-claw.js
           node --check static/shared/developer-mode.js
           node --check static/shared/database-diagnostics.js
-          node --test tests/default-template.test.cjs tests/tasks.test.cjs
+          node --test tests/*.test.cjs
           node tests/ui-browser.cjs
+          node tests/ai-trace-browser.cjs
 
   release:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

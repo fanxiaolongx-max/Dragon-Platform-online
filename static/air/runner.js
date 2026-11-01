@@ -68,10 +68,11 @@
         for(const cell of wanted)if(reply.gists?.[cell.id])gists.set(gistKey(cell,lang),String(reply.gists[cell.id]).slice(0,300));
     }
     async function compute(cell,month,signal){
+        cell.recipe=AiReportModel.presentationRecipe(cell.recipe,cell.prompt);
         if(readsResults(cell))await fillGists(cell);
         signal?.throwIfAborted();
         // Outline/result sources already live in this report; do not require a backend for navigation.
-        const {input,missing}=cell.recipe.sources.every(source=>source.kind==='report')?{input:{},missing:[]}:await API.post('/api/ai-report/run-data',{month,recipe:cell.recipe},{signal});
+        const {input,missing}=cell.recipe.sources.every(source=>source.kind==='report')?{input:{},missing:[]}:await AiReportTrace.post(cell.id,'读取配方数据 / Read recipe data','/api/ai-report/run-data',{month,recipe:cell.recipe});
         const failed=[...(missing||[])];
         for(const source of cell.recipe.sources)if(source.kind!=='report'&&input[source.id]==null&&!failed.some(item=>item.id===source.id))failed.push({id:source.id,label:source.label,error:'数据源未返回结果 / No source result'});
         if(failed.length){
@@ -81,7 +82,7 @@
         input.$month=month;
         for(const source of cell.recipe.sources)if(source.kind==='report')input[source.id]=reportInput(cell,source);
         // Overviews quote other cells' conclusions on purpose, so the one-summary check does not apply to them.
-        const {result,html,widgets}=await AiReportSandbox.run({compute:cell.recipe.compute,render:cell.recipe.render,input,summary:!!cell.recipe.narrative&&!readsResults(cell)},{signal});
+        const {result,html,widgets}=await AiReportTrace.local(cell.id,'sandbox',()=>AiReportSandbox.run({compute:cell.recipe.compute,render:cell.recipe.render,input,summary:!!cell.recipe.narrative&&!readsResults(cell)},{signal}));
         // A recipe without narrative must not keep the summary box of an earlier recipe (two summaries on screen).
         const output=AiReportModel.normalizeOutput({...(cell.output||{}),...(cell.recipe.narrative?{}:{narrative:{zh:'',en:''},narrativeMonth:''}),month,result:keepResult(result),html:AiReportSanitize.clean(html),widgets:AiReportWidgets.cleanSpecs(widgets),error:'',generatedAt:new Date().toISOString()});
         return {output,missing};
@@ -110,6 +111,7 @@
     }
     // A title the prompt asks for (标题为“X” / 标题“X”) must show up in the cell, as a heading or a chart title.
     function missingTitle(cell){
+        if(AiReportModel.presentationOf(cell.prompt).mode==='text')return '';
         const wanted=[...String(cell.prompt||'').matchAll(/标题(?:为|是|改成|改为|写成)?[“"「]([^”"」]{1,40})[”"」]/g)].map(match=>match[1].trim()).filter(Boolean);
         if(!wanted.length||!cell.output||cell.output.error)return '';
         const shown=unescape(String(cell.output.html||'').replace(/<[^>]*>/g,' '))+' '+unescape(String(cell.output.html||'').match(/data-slot-title="[^"]*"/g)?.join(' ')||'')+' '+JSON.stringify((cell.output.widgets||[]).map(widget=>widget.spec?.option?.title||null));

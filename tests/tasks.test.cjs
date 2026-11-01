@@ -17,7 +17,7 @@ test('superseding a cell also cancels its previous controller',()=>{const t=task
 
 test('failed sources never reach generated compute or narrative; successful empty queries remain valid',async()=>{
  let payload={input:{s1:null},missing:[{id:'s1',label:'拦截数据',error:'no such column: fixture'}]},computes=0,narratives=0;
- const window={},context={window,API:{post:async()=>payload},AiReportModel:{normalizeOutput:x=>x},AiReportSandbox:{run:async()=>{computes++;return {result:{total:0},html:'0',widgets:[]};}},AiReportSanitize:{clean:x=>x},AiReportWidgets:{cleanSpecs:x=>x},AiReportTrace:{post:async()=>{narratives++;return {};}}};
+ const window={},context={window,API:{post:async()=>payload},AiReportModel:{presentationRecipe:r=>r,normalizeOutput:x=>x},AiReportSandbox:{run:async()=>{computes++;return {result:{total:0},html:'0',widgets:[]};}},AiReportSanitize:{clean:x=>x},AiReportWidgets:{cleanSpecs:x=>x},AiReportTrace:{local:async(_id,_stage,work)=>work(),post:async(_id,_label,path)=>{if(path.endsWith('/run-data'))return payload;narratives++;return {};}}};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../static/air/runner.js'),'utf8'),context);
  const cell={id:'test',recipe:{sources:[{id:'s1',kind:'sql',label:'拦截数据'}],narrative:{prompt:'总结'}}};
  await assert.rejects(window.AiReportRunner.run(cell,'2026-10'),/no such column: fixture/);
