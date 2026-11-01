@@ -173,6 +173,13 @@ async function environmentFlow(page,origin){
   assert.equal(await select.inputValue(),'remote');assert(await select.isDisabled());
   assert(await contrast(select)>=4.5,'Locked native control remains readable');
   const screenshotDir=process.env.UI_SCREENSHOTS;if(screenshotDir){fs.mkdirSync(screenshotDir,{recursive:true});await frame.locator('.topbar').screenshot({path:path.join(screenshotDir,'environment-selector.png')});}
+  const originalViewport=page.viewportSize();
+  for(const width of [1280,768,390]){
+    await page.setViewportSize({width,height:850});
+    const bounds=await select.evaluate(el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,width:innerWidth};});
+    assert(bounds.left>=0&&bounds.right<=bounds.width,'Environment control stays visible at width '+width);
+  }
+  await page.setViewportSize(originalViewport);
   console.log('PASS: developer environment selector, shared profile switch and reload, native-base switch lock.');
 }
 async function stopFlow(page,origin){
