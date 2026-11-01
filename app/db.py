@@ -5,6 +5,7 @@
 环境变量配置：BASE_QUERY_URL / APP_DATASOURCE_ID / APP_SCHEMA / BUSINESS_DATASOURCE_NAME。
 """
 import asyncio
+from contextvars import ContextVar
 import time
 from email.utils import parsedate_to_datetime
 
@@ -41,6 +42,7 @@ def _base_find_table_url() -> str:
 # --------------------------------------------------------------------
 
 _client: httpx.AsyncClient | None = None
+request_observer = ContextVar('base_request_observer', default=None)
 
 
 def _get_client() -> httpx.AsyncClient:
@@ -105,6 +107,9 @@ async def _base_request(method, url, **kwargs):
             data = response.json()
         except ValueError:
             data = None
+        observer = request_observer.get()
+        if observer:
+            observer(response, data)
         code = data.get("code") if isinstance(data, dict) else None
         limited = response.status_code == 429 or code in (429, "429", "HOSTED_DATA_RATE_LIMIT")
         if limited:

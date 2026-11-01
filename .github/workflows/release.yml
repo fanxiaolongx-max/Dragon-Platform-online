@@ -28,7 +28,9 @@ jobs:
       - name: Install application test dependencies
         run: python -m pip install -r requirements.txt
       - name: Test application and packaging contracts
-        run: python -m unittest discover -s tests -p 'test_*.py' -v
+        run: |
+          python scripts/sync_developer_fallback.py --check
+          python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Build application packages
         run: python scripts/build_release.py
       - name: Verify checksums
@@ -57,6 +59,7 @@ jobs:
         run: |
           node --check static/shared/dragon-claw.js
           node --check static/shared/developer-mode.js
+          node --check static/shared/database-diagnostics.js
           node --test tests/default-template.test.cjs tests/tasks.test.cjs
           node tests/ui-browser.cjs
 

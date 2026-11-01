@@ -12,6 +12,7 @@ const saves=[];
 let environmentMode='local',environmentRevision=0,nativeEnvironment=false;
 let monthMode=false;const monthDocs=new Map();
 let executionFailure=null, htmlFallback=false;
+let diagnosticSlow=false;const diagnosticCalls=[];
 const adc = `window.ADCChat={configured:true,busy:false,environment:'Fixture',newSession:async()=> 'fixture',stop(){},ask:async(_q,o)=>o.onUpdate('验证回答。\\n\\n\`\`\`js\\nconst answer = 2;\\n\`\`\`')};`;
 const server = http.createServer((req, res) => {
   requests.push(req.url);
@@ -22,6 +23,11 @@ const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Headers','content-type,x-aiops-environment-revision');
   res.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,DELETE,OPTIONS');
   if(req.method==='OPTIONS'){res.end();return;}
+  if(url==='/api/diagnostics/database'){
+    const send=data=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({code:0,data}));};
+    if(req.method==='GET'){send({configuration:{version:'test',queryUrlConfigured:true,apiKey:'do-not-export'},coverage:{readOnly:true},checks:[{id:'configuration',label:'配置',table:'fixture'},{id:'business-basic',label:'业务库',table:'fixture'},{id:'table-plain',label:'表查询',table:'fixture'}]});return;}
+    let body='';req.on('data',c=>body+=c);req.on('end',()=>{const item=JSON.parse(body);diagnosticCalls.push(item);setTimeout(()=>send({...item,status:item.id==='business-basic'?'fail':'pass',ms:12,message:item.id==='business-basic'?'SQL rejected token=fixture-secret':'ok',upstream:[{httpStatus:item.id==='business-basic'?400:200,requestId:'00000000-0000-4000-8000-000000000000',message:'password=fixture-password'}],rows:[{private:'private-record'}]}),diagnosticSlow?500:0);});return;
+  }
   if(url==='/api/environment'){
     const reply=()=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({code:0,data:{mode:nativeEnvironment?'remote':environmentMode,revision:environmentRevision,switchable:!nativeEnvironment,remoteReady:true}}));};
     if(req.method==='POST'){let body='';req.on('data',c=>body+=c);req.on('end',()=>{environmentMode=JSON.parse(body).mode;environmentRevision++;reply();});}else reply();return;
@@ -299,6 +305,27 @@ async function workspace(page, origin, pathname, sandbox = false) {
   await frame.locator('#menuSearch').waitFor();
   await frame.locator('#leftPanel .grp').first().waitFor();
   console.log('Developer endpoints rendered');
+  await frame.locator('#menuSearch').fill('数据库测试');
+  await frame.locator('#leftPanel .ep').filter({hasText:'数据库测试一键套件'}).click();
+  await frame.locator('#diagnosticsCard').waitFor({state:'visible'});
+  await frame.locator('[data-start]').click();
+  await frame.locator('[data-progress]').filter({hasText:'已完成：3/3'}).waitFor();
+  assert.equal(await frame.locator('[data-results] tr').count(),3);
+  assert.equal(await frame.locator('[data-results] td[data-status=fail]').count(),1);
+  if(process.env.UI_SCREENSHOTS && pathname==='/'&&!sandbox)await page.screenshot({path:path.join(process.env.UI_SCREENSHOTS,'database-diagnostics.png')});
+  const downloadEvent=page.waitForEvent('download');await frame.locator('[data-export]').click();
+  const download=await downloadEvent;const exported=JSON.parse(fs.readFileSync(await download.path(),'utf8'));
+  assert.equal(exported.summary.fail,1);assert.equal(exported.results[1].upstream[0].httpStatus,400);
+  assert.equal(exported.results[1].upstream[0].requestId,'00000000-0000-4000-8000-000000000000');
+  for(const value of ['fixture-secret','fixture-password','private-record','do-not-export'])assert(!JSON.stringify(exported).includes(value));
+  await frame.locator('[data-lang]').click();assert.equal(await frame.locator('[data-start]').innerText(),'Run all checks');
+  await frame.locator('[data-lang]').click();
+  diagnosticSlow=true;const before=diagnosticCalls.length;
+  await frame.locator('[data-start]').click();await page.waitForFunction(()=>true);
+  await frame.locator('[data-stop]').click();await frame.locator('[data-progress]').filter({hasText:'已停止'}).waitFor();
+  await page.waitForTimeout(600);assert(diagnosticCalls.length-before<=1,'Stopped suite must not send later probes');diagnosticSlow=false;
+  await frame.locator('[data-retry]').click();await frame.locator('[data-progress]').filter({hasText:'已完成：3/3'}).waitFor();
+  console.log('PASS: diagnostic menu, scoped sequential suite, partial stop/resume, bilingual labels and sanitized JSON export.');
   if(process.env.UI_SCREENSHOTS && pathname === '/' && !sandbox) await page.screenshot({path:path.join(process.env.UI_SCREENSHOTS,'developer-modal.png')});
   assert.equal(await frame.locator('#apiBase').inputValue(), pathname + 'api');
   assert.equal(await frame.locator('#aiBar').count(), 0);

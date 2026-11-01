@@ -5,7 +5,7 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.5.3`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.5.4`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
@@ -294,6 +294,16 @@ Internal Tooling Project · [Dragon Platform](https://github.com/fanxiaolongx-ma
 
 停止时会隔离旧异步任务持有的文档对象，并使用独立的取消令牌拒绝旧响应。立即重新生成使用新令牌，旧任务不能覆盖新结果或清除新任务的忙碌状态。停止会取消尚未触发的尺寸自动调整与批量队列；已完成的内容保留，不自动保存。停止仅针对月报生成，不取消单独运行的 Dragon Claw 助理会话。
 
+
+### 数据库测试一键套件（1.5.4）
+
+开发者模式 → 工具 → 数据库测试一键套件。输入业务库落地表名后，一键执行 19 项只读检查：配置存在性、基座数据源接口、分配的应用库和业务库、五张应用表、元数据、表名引号、分页、空结果聚合与本地 SQL 守卫。可选按包内目录扫描全部业务表字段（最多 500 张）；目录是静态线索，不代表远端实际可读。字段查询成功但没有返回字段记为警告，不能视为表已验证。
+
+检查逐项发送，支持停止、保留部分结果、重测失败或尚未执行项，并将结果导出为 JSON。日志包含版本、配置存在性标志、UTC 时间、检查 ID、测试 SQL、耗时、基座 HTTP/业务错误码、脱敏错误与上游请求编号。只导出错误白名单字段及行数，不导出业务记录、请求头、Cookie、凭据、完整连接地址或环境变量；重测保留上一次失败历史。基座返回 HTTP 400 时，日志能保留原响应中的安全错误说明，不再只有外层通用提示。
+
+套件不执行 INSERT/UPDATE/DELETE、DDL、跨库探测或模型调用；本地 SQL 守卫检查不代表已实测远端写入权限。它覆盖常见数据库问题，不穷尽所有故障。检查接口使用固定探针 ID，不接收任意 SQL 或数据源；支持原生基座、本地模拟及远端对接，仍走原来的数据库访问与身份注入链路。更新包后需在基座重启应用并刷新页面，前后端版本应一致。
+
+`GET /api/diagnostics/database?table=落地表名&full=false` 返回检查清单，`POST /api/diagnostics/database` 接收 `{id,table}` 执行单项，最长 20 秒。客户端另区分浏览器到应用的网络/非 JSON 错误，导出日志应保留原文件供定位。开发者页面与内嵌兜底副本通过 `python scripts/sync_developer_fallback.py` 同步，CI 校验一致性，避免网关回退到旧版界面。
 
 ### 应用工具协议（1.5.3）
 
