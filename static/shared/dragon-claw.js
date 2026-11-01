@@ -86,6 +86,56 @@
   if(st.zoom && ['50','70','100'].indexOf(String(st.zoom))>-1) frameZoomSel.value=String(st.zoom);
   if(st.agent===false) agentSw.checked=false;
   frameZoomSel.addEventListener('change', applyFrameZoom);
+  /* 原 ADC 聊天页亮色 / 暗色（默认亮色，按钮显示要切换到的模式，选择按浏览器记住）。
+     内嵌页面同源：先用它自带的亮色（去掉 dark 类与主题属性、停用 prefers-color-scheme: dark 规则，页面再切回暗色时纠正）；
+     页面本身只有暗色、测得背景仍偏暗时，整页反色成亮色，图片和视频再反回来保持原色。切回暗色时撤销。 */
+  const frameThemeBtn=$('#aiBarFrameTheme');
+  const INVERT='invert(1) hue-rotate(180deg)';
+  let themeObserver=null, themeTimer=0, nativeTouched=false;
+  const frameDoc=()=>{try{const d=frame.contentDocument;return d&&d.documentElement&&d.location.href!=='about:blank'?d:null;}catch(_){return null;}};
+  function frameLooksDark(){
+    const d=frameDoc();if(!d?.body)return null;
+    const w=d.defaultView,width=d.documentElement.clientWidth,height=d.documentElement.clientHeight;if(!width||!height)return null;
+    const lum=el=>{for(let n=el;n;n=n.parentElement){const m=w.getComputedStyle(n).backgroundColor.match(/[\d.]+/g);if(m&&(m.length<4||Number(m[3])>0.5)){const [r,g,b]=m.slice(0,3).map(Number);return (0.2126*r+0.7152*g+0.0722*b)/255;}}return 1;};
+    const points=[[0.5,0.5],[0.12,0.5],[0.5,0.12],[0.85,0.85]].map(([x,y])=>d.elementFromPoint(width*x,height*y)).filter(Boolean);
+    if(!points.length)return null;
+    return points.reduce((sum,el)=>sum+lum(el),0)/points.length<0.4;
+  }
+  function forceNativeLight(d){
+    for(const n of [d.documentElement,d.body].filter(Boolean)){
+      for(const c of ['dark','theme-dark','dark-mode','dark-theme'])if(n.classList.contains(c)){n.classList.remove(c);n.classList.add('light');nativeTouched=true;}
+      for(const a of ['data-theme','theme','data-color-mode','data-mode','data-bs-theme','data-color-scheme'])if(/dark/i.test(n.getAttribute(a)||'')){n.setAttribute(a,'light');nativeTouched=true;}
+    }
+    if(d.documentElement.style.colorScheme!=='light'){d.documentElement.style.colorScheme='light';}
+    for(const sheet of d.styleSheets){let rules;try{rules=sheet.cssRules;}catch(_){continue;}
+      for(const rule of rules)if(rule.media&&/prefers-color-scheme\s*:\s*dark/i.test(rule.media.mediaText)){rule.media.mediaText='not all';nativeTouched=true;}}
+  }
+  function setInvert(on){
+    frame.style.filter=on?INVERT:'';
+    const d=frameDoc();if(!d)return;
+    let fix=d.getElementById('dc-invert-fix');
+    if(on&&!fix){fix=d.createElement('style');fix.id='dc-invert-fix';fix.textContent='img,video,canvas,picture,[style*="background-image"]{filter:'+INVERT+'}';(d.head||d.documentElement).append(fix);}
+    if(!on&&fix)fix.remove();
+  }
+  function lightPass(){
+    if(st.frameTheme==='dark')return;
+    const d=frameDoc();if(!d)return;
+    themeObserver?.disconnect();
+    try{forceNativeLight(d);}catch(_){}
+    const dark=frameLooksDark();if(dark!==null)setInvert(dark);
+    if(!themeObserver)themeObserver=new MutationObserver(()=>{clearTimeout(themeTimer);themeTimer=setTimeout(lightPass,200);});
+    themeObserver.observe(d.documentElement,{attributes:true,attributeFilter:['class','style','data-theme','theme','data-color-mode','data-mode','data-bs-theme','data-color-scheme'],childList:true,subtree:true});
+  }
+  function applyFrameTheme(){
+    const dark=st.frameTheme==='dark';
+    if(frameThemeBtn){ frameThemeBtn.textContent=dark?'亮色':'暗色'; frameThemeBtn.setAttribute('aria-pressed', String(dark)); }
+    if(!dark){lightPass();return;}
+    themeObserver?.disconnect();themeObserver=null;setInvert(false);
+    // 改过页面自带主题时，空闲时重新加载内嵌页恢复它原来的暗色；有提问进行中则留到下次加载
+    if(nativeTouched&&!laneBusy&&!running){nativeTouched=false;try{frame.contentWindow.location.reload();}catch(_){}}
+  }
+  frame.addEventListener('load',()=>{nativeTouched=false;themeObserver?.disconnect();themeObserver=null;setTimeout(applyFrameTheme,50);});
+  if(frameThemeBtn) frameThemeBtn.onclick=()=>{ st.frameTheme=st.frameTheme==='dark'?'light':'dark'; applyFrameTheme(); persist(); };
   agentSw.addEventListener('change', persist);
   applyFrameZoom();
   function setOpen(v){
@@ -486,6 +536,7 @@
     frameToggle.textContent=v?'收起':'展开';
     frameToggle.setAttribute('aria-expanded',String(v)); frameNotice('');
     fit();
+    if(v) requestAnimationFrame(applyFrameTheme);
   }
   /* 检测内嵌原页面是否已出现可见且空的聊天输入框（与 adc-chat findComposer 同口径，递归扫描子 frame） */
   function frameHasComposer(){
@@ -523,10 +574,11 @@
      - owner 不同（例如 AI 月报用过之后回到助理浮窗）或 fresh=true 时先新建 ADC 会话，互不串上下文；
      - 新建会话失败（内网未捕获 session-init 路由等）时沿用当前会话，并在提问前声明这是一个全新的独立任务。 */
   const FRESH_NOTE=CTX+'以下是一个全新的独立任务，忽略本会话之前的所有内容。\n';
-  async function rawAsk(prompt, onUpdate, signal, protocol){
+  async function rawAsk(prompt, onUpdate, signal, protocol, viaPage=false){
     signal?.throwIfAborted();
     const C=window.ADCChat;
-    const first=!C.configured;
+    // first：还没有会话，ADCChat 会经原页面发送；viaPage：明确要求在内嵌原页面里输入并发送（AI 月报每次都这样走）。
+    const first=!C.configured || viaPage;
     let stealthed=false;
     /* 临时把外层页面所有输入框排除出「聊天输入框」候选，避免 findComposer 误选月报格子或浮窗输入框 */
     const muted=[];
@@ -544,27 +596,47 @@
         for(let i=0;!ready && i<300;i++){
           await new Promise(r=>setTimeout(r,100));
           signal?.throwIfAborted();
-          if(C.configured || frameHasComposer()){ ready=true; break; }
+          if((!viaPage && C.configured) || frameHasComposer()){ ready=true; break; }
         }
-        if(!ready && !C.configured){
+        if(!ready && (viaPage || !C.configured)){
           setOpen(true);
           if(stealthed){ wrapEl.classList.remove('stealth'); stealthed=false; lockFrame(false); }
           setFrameVisible(true);
           for(let i=0;i<50;i++){
             await new Promise(r=>setTimeout(r,100));
           signal?.throwIfAborted();
-            if(C.configured || frameHasComposer()){ ready=true; break; }
+            if((!viaPage && C.configured) || frameHasComposer()){ ready=true; break; }
           }
         }
-        if(!ready && !C.configured) throw new Error('内嵌原页面未就绪：聊天输入框未出现，请展开「原 ADC 聊天页」后重试。');
+        if(!ready && (viaPage || !C.configured)) throw new Error('内嵌原页面未就绪：聊天输入框未出现，请展开「原 ADC 聊天页」后重试。');
       }
       let latest='';
-      await C.ask(prompt, { protocol, onUpdate:t=>{ if(signal?.aborted)return;latest=t||''; onUpdate&&onUpdate(latest); } });
+      await C.ask(prompt, { protocol, ...(viaPage?{viaPage:true}:{}), onUpdate:t=>{ if(signal?.aborted)return;latest=t||''; onUpdate&&onUpdate(latest); } });
       signal?.throwIfAborted();return latest;
     } finally {
       if(stealthed){ wrapEl.classList.remove('stealth'); lockFrame(false); }
       for(const el of muted) el.removeAttribute('aria-disabled');
     }
+  }
+  /* 真实 ADC（ADCChat v1.4）上不再调用 newSession 接口：接口直接建的会话缺少原页面的初始化，内网会出现
+     “没有助手正文”“流提前结束”。改为点击内嵌原页面自己的「新建对话」，由页面按正常流程建会话；
+     平台本地模拟的客户端没有 version，仍用接口新建。 */
+  const realAdc=()=>Boolean(window.ADCChat?.version);
+  async function pageNewChat(signal){
+    ensureFrame();
+    const docOf=()=>{try{const d=frame.contentDocument;return d&&d.readyState==='complete'&&d.location.href!=='about:blank'?d:null;}catch(_){return null;}};
+    for(let i=0;!docOf()&&i<100;i++){ await new Promise(r=>setTimeout(r,100)); signal?.throwIfAborted(); }
+    const doc=docOf();
+    if(!doc) return false;
+    // 按钮前常有 ⊕ 等图标：只比较文字部分
+    const words=el=>String(el.textContent||'').replace(/[^\p{L}\p{N}]/gu,'').toLowerCase();
+    const names=new Set(['新建对话','新对话','新建会话','newchat','newconversation']);
+    const hits=[...doc.querySelectorAll('button,[role="button"],a,li,div,span')].filter(el=>names.has(words(el))&&!el.closest('[aria-hidden="true"]'));
+    const target=hits.sort((a,b)=>(a.textContent||'').length-(b.textContent||'').length||a.querySelectorAll('*').length-b.querySelectorAll('*').length)[0];
+    if(!target) return false;
+    (target.closest('button,[role="button"],a')||target).click();
+    for(let i=0;i<30;i++){ await new Promise(r=>setTimeout(r,100)); signal?.throwIfAborted(); }
+    return true;
   }
   function conversation(owner, fresh, fn, {signal,onState}={}){
     onState?.('queued');
@@ -576,18 +648,24 @@
       const abort=()=>{try{C.stop();}catch(_){}laneOwner=null;};
       signal?.addEventListener('abort',abort,{once:true});
       try{
-      let pendingNote=false, used=false;
+      let pendingNote=false, used=false, pageNext=false;
       const reset=async()=>{
         signal?.throwIfAborted();
-        if(!C.configured){ return true; }        // 还没有会话：首问会新建
+        if(!C.configured){ return true; }        // 还没有会话：首问经原页面新建
+        if(realAdc()){
+          if(await pageNewChat(signal)){ pendingNote=false; pageNext=true; return true; }
+          pendingNote=true; return false;        // 找不到「新建对话」：留在当前会话，提问前声明是新任务
+        }
         try{ await (window.AiReportTasks?.wait(C.newSession(),signal)||C.newSession()); signal?.throwIfAborted();pendingNote=false; return true; }
         catch(e){ if(e.name==='AbortError')throw e;pendingNote=true; return false; }
       };
       let isNew=false;
       if(fresh || (laneOwner && laneOwner!==owner)){ await reset(); isNew=true; }
       laneOwner=owner;
-      const ask=async(prompt, onUpdate)=>{ const text=(pendingNote&&!used?FRESH_NOTE:'')+prompt; used=true; pendingNote=false; signal?.throwIfAborted();const protocol=owner==='air'?'application-json-v1':undefined;return window.AiReportTasks?.wait(rawAsk(text,onUpdate,signal,protocol),signal)||rawAsk(text,onUpdate,signal,protocol); };
-      const fork=async()=>{ used=false; await reset(); };
+      // AI 月报在真实 ADC 上每次都经内嵌原页面发送，和手动提问同一条路，打开「原 ADC 聊天页」就能看到全过程。
+      const ask=async(prompt, onUpdate)=>{ const text=(pendingNote&&!used?FRESH_NOTE:'')+prompt; used=true; pendingNote=false; signal?.throwIfAborted();const protocol=owner==='air'?'application-json-v1':undefined;const viaPage=realAdc()&&(owner==='air'||pageNext);pageNext=false;return window.AiReportTasks?.wait(rawAsk(text,onUpdate,signal,protocol,viaPage),signal)||rawAsk(text,onUpdate,signal,protocol,viaPage); };
+      // 同一次操作里的独立子任务（如冲突检查）：真实 ADC 上留在同一个对话里并声明是新任务，避免一次操作开出多个对话。
+      const fork=async()=>{ used=false; if(realAdc()&&C.configured){ pendingNote=true; return; } await reset(); };
       signal?.throwIfAborted();return await fn({ask, reset:fork, isNew}); }
       finally{signal?.removeEventListener('abort',abort); laneBusy=null; updateButtons(); }
     };
@@ -681,6 +759,7 @@
     $('#aiBarFrameToggle').onclick=()=>setFrameVisible(!frameVisible());
   }
   updateButtons();
+  applyFrameTheme();
   window.DragonClaw={ md, parseReply, send, stop, conversation, base, open:()=>setOpen(true), ready:()=>onSite && hasClient };
   window.__dragonClaw=window.DragonClaw;   // 便于调试与自动化测试
 })();

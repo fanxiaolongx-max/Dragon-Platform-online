@@ -183,6 +183,9 @@
 #aiBarFrameWrap iframe{position:absolute;top:0;left:0;border:0;display:block;background:#fff;transform-origin:top left;pointer-events:none}
 .aibar:not(.collapsed) #aiBarFrameWrap.open{position:relative;left:auto;top:auto;width:auto;height:auto;z-index:auto;opacity:1;pointer-events:auto;flex:1 1 0;min-height:0;border-top:1px solid var(--dc-line)}
 .aibar:not(.collapsed) #aiBarFrameWrap.open iframe{pointer-events:auto}
+/* 浮窗本身是暗色（color-scheme:dark），内嵌的 ADC 页面会继承并按 prefers-color-scheme 变暗；默认单独用亮色 */
+#aiBarFrame{color-scheme:light}
+#aiBarFrameWrap.is-dark #aiBarFrame{color-scheme:dark}
 /* 隐身展开：脱离浮窗布局流并置于视口底层透明区，对用户不可见但 iframe 内输入框始终有真实布局与 clientRects（首次发送及浮窗收起时使用） */
 #aiBarFrameWrap.stealth{display:block;visibility:visible;position:fixed;left:0;top:0;width:360px;height:320px;z-index:-1;opacity:0;pointer-events:none;overflow:hidden}
 #aiBarFrameWrap.stealth iframe{position:absolute;top:0;left:0;border:0;display:block;background:#fff;transform-origin:top left;pointer-events:none}

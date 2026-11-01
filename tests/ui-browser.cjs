@@ -13,6 +13,13 @@ let environmentMode='local',environmentRevision=0,nativeEnvironment=false;
 let monthMode=false;const monthDocs=new Map();
 let executionFailure=null, htmlFallback=false;
 let diagnosticSlow=false;const diagnosticCalls=[];
+// 真实 ADC（v1.4）模拟：有 version；接口 newSession 不允许被调用，提问必须经内嵌原页面（viaPage）。
+let realAdcMode=false;
+const realAdc = `window.__adcAsks=[];window.__adcNewSession=0;window.ADCChat={version:'1.4',configured:true,busy:false,environment:'Fixture ADC',
+  newSession:async()=>{window.__adcNewSession++;throw new Error('newSession must not be used on the real ADC');},stop(){},
+  ask:async(q,o={})=>{const doc=document.getElementById('aiBarFrame').contentDocument,box=doc&&doc.querySelector('textarea');
+    window.__adcAsks.push({viaPage:!!o.viaPage,composer:!!box,newChats:(doc&&doc.defaultView.__newChats)||0,fresh:q.includes('全新的独立任务')});
+    const text='{"gists":{"c1":"要点"}}';o.onUpdate&&o.onUpdate(text);return text;}};`;
 const adc = `window.ADCChat={configured:true,busy:false,environment:'Fixture',newSession:async()=> 'fixture',stop(){},ask:async(_q,o)=>o.onUpdate('验证回答。\\n\\n\`\`\`js\\nconst answer = 2;\\n\`\`\`')};`;
 const server = http.createServer((req, res) => {
   requests.push(req.url);
@@ -66,8 +73,8 @@ const server = http.createServer((req, res) => {
     if (url.includes('capabilities')) data = { tools: [], prompt: 'fixture', sources: [] };
     res.end(JSON.stringify({ code: 0, data })); return;
   }
-  if (url === '/__platform/adc/client.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(adc); return; }
-  if (url.startsWith('/adc-agent/')) { res.setHeader('Content-Type', 'text/html'); res.end('<textarea></textarea>'); return; }
+  if (url === '/__platform/adc/client.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(realAdcMode ? realAdc : adc); return; }
+  if (url.startsWith('/adc-agent/')) { res.setHeader('Content-Type', 'text/html'); res.end(realAdcMode ? '<!doctype html><html class="dark"><head><style>body{margin:0;height:100vh;background:#fff;color:#111}html.dark body{background:#111;color:#eee}</style></head><body><button type="button" onclick="window.__newChats=(window.__newChats||0)+1"><i>+</i> 新建对话</button><textarea placeholder="发送消息"></textarea></body></html>' : '<textarea></textarea>'); return; }
   // Simulate a base that routes /dev (or all HTML paths when htmlFallback is active) back to the report.
   const file = url === '/' || url === '/dev' || (htmlFallback && url.endsWith('.html')) ? 'static/index.html'
     : url.startsWith('/static/') ? url.slice(1) : 'static' + url;
@@ -143,6 +150,36 @@ async function monthFlow(page,origin){
   assert.equal([...monthDocs.values()].filter(d=>d.reportKind==='copy').length,1);
   assert.match(await page.locator('#airReportName').textContent(),/副本/);
   console.log('PASS: one default per month, existing-month navigation, preserved October, explicit save-as copy, accessible legacy history.');
+}
+async function realAdcFlow(page,origin){
+  realAdcMode=true;
+  try{
+    await page.goto(origin+'/');await page.locator('#airReport h1').waitFor();
+    const gist=()=>page.evaluate(()=>window.API.post('/api/ai-report/cell/gist',{month:'2026-10',items:[{id:'c1',title:'t',prompt:'p',result:{n:1}}]}));
+    assert.deepEqual(await gist(),{gists:{c1:'要点'}});
+    assert.deepEqual(await gist(),{gists:{c1:'要点'}});
+    const asks=await page.evaluate(()=>window.__adcAsks),calls=await page.evaluate(()=>window.__adcNewSession);
+    assert.equal(calls,0,'Real ADC sessions are never created through the newSession API');
+    assert.equal(asks.length,2);
+    assert(asks.every(a=>a.viaPage&&a.composer),'AI report requests are typed into the embedded ADC page');
+    assert.deepEqual(asks.map(a=>a.newChats),[1,2],'Each AI report action opens one chat with the page\'s own 新建对话 button');
+    assert(asks.every(a=>!a.fresh),'A page-created chat needs no fresh-task note');
+    await page.evaluate(()=>window.DragonClaw.open());
+    if(!(await page.locator('#aiBarFrameWrap').evaluate(el=>el.classList.contains('open'))))await page.locator('#aiBarFrameToggle').click();
+    const look=()=>page.evaluate(()=>{const f=document.getElementById('aiBarFrame'),d=f.contentDocument;return {dark:d.documentElement.classList.contains('dark'),bg:getComputedStyle(d.body).backgroundColor,filter:f.style.filter};});
+    await page.waitForFunction(()=>!document.getElementById('aiBarFrame').contentDocument.documentElement.classList.contains('dark'));
+    assert.deepEqual(await look(),{dark:false,bg:'rgb(255, 255, 255)',filter:''},'The page\'s own light theme is used when it has one');
+    await page.evaluate(()=>{document.getElementById('aiBarFrame').contentDocument.body.style.background='#000';});
+    await page.waitForFunction(()=>document.getElementById('aiBarFrame').style.filter.includes('invert'));
+    assert.equal(await page.evaluate(()=>!!document.getElementById('aiBarFrame').contentDocument.getElementById('dc-invert-fix')),true,'Images are inverted back');
+    await page.evaluate(()=>document.getElementById('aiBarFrameTheme').click());
+    await page.waitForFunction(()=>{const d=document.getElementById('aiBarFrame').contentDocument;return d.readyState==='complete'&&d.documentElement.classList.contains('dark');});
+    assert.equal((await look()).filter,'','Dark mode removes the inversion and restores the page\'s own dark theme');
+    assert.equal(await page.locator('#aiBarFrameTheme').textContent(),'亮色');
+    await page.evaluate(()=>document.getElementById('aiBarFrameTheme').click());
+    await page.waitForFunction(()=>!document.getElementById('aiBarFrame').contentDocument.documentElement.classList.contains('dark'));
+    console.log('PASS: real ADC requests go through the embedded page and its own 新建对话, never the newSession API; embedded page is light by default (native theme or inversion) with a dark toggle.');
+  }finally{realAdcMode=false;}
 }
 async function environmentFlow(page,origin){
   monthMode=false;
@@ -524,6 +561,7 @@ async function assistantFeedback(page){
   await environmentFlow(page,origin);
   await stopFlow(page,origin);
   await concurrencyFlow(page,origin);
+  await realAdcFlow(page,origin);
   assert.deepEqual(errors, []);
   console.log('PASS: restored geometry, four-edge dragging, both resize handles, dark buttons, iframe zoom, viewport resizing, visual viewport zoom, modal state/focus, root and prefixed API paths, sandboxed embedding.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => { await browser?.close(); server.close(); });
