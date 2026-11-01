@@ -106,6 +106,17 @@ class DiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(matched['status'], 'pass')
         self.assertIs(matched['datasourceMatch']['configuredNameListed'], True)
 
+    async def test_automatic_group_adaptation_is_reported_before_followup_queries(self):
+        settings.BUSINESS_DATASOURCE_NAME = 'netcare-retired-group'
+        self.catalog = [{'name': 'netcareClaw-operate-digital-readonly'}]
+        result = await suite.probe('datasources')
+        self.assertEqual(settings.BUSINESS_DATASOURCE_NAME, 'netcareClaw-operate-digital-readonly')
+        self.assertEqual(result['datasourceMatch']['configuredBusinessName'], 'netcare-retired-group')
+        self.assertEqual(result['datasourceMatch']['resolvedBusinessName'], settings.BUSINESS_DATASOURCE_NAME)
+        self.assertIn('已根据基座清单自动切换', result['message'])
+        await db.base_query_business('SELECT 1 AS probe', 1)
+        self.assertEqual(self.sent[-1][1]['datasourceName'], settings.BUSINESS_DATASOURCE_NAME)
+
     async def test_candidate_group_is_only_compared_never_queried_or_listed(self):
         self.catalog = [{'name': 'risk-business'}, {'name': 'third-business'}]
         result = await suite.probe('datasources', candidate='risk-business')

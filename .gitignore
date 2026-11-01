@@ -23,8 +23,8 @@ Thumbs.db
 _platform_host.py
 
 # Local configuration, runtime databases and release output
-.env
 .env.*
+!.env
 !.env.example
 *.db
 *.db-*

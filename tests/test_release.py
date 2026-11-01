@@ -22,7 +22,7 @@ class ReleaseTests(unittest.TestCase):
         self.output = Path(self.temp.name) / "out"
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)
         for name in release.REQUIRED:
-            self.put(name, "1.4.0\n" if name.endswith(".version") else "fixture\n")
+            self.put(name, "1.4.0\n" if name.endswith(".version") else "BUSINESS_DATASOURCE_NAME=fixture-business\n" if name == ".env" else "fixture\n")
         subprocess.run(["git", "-C", str(self.root), "add", "."], check=True)
         subprocess.run(["git", "-C", str(self.root), "-c", "core.hooksPath=/dev/null",
                         "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
@@ -61,11 +61,11 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(before, (self.output / platform_pkg).read_bytes())
 
     def test_tracked_runtime_secrets_excluded_and_static_data_preserved(self):
-        rejected = [".env", "app/.env.production", "app/private.key", "static/token.json",
+        rejected = [".env.local", "app/.env.production", "app/private.key", "static/token.json",
                     "db/app.db", "app/__pycache__/a.pyc", "static/logs/a.log",
                     "_platform_host.py", ".github/workflows/release.yml", "dist/old.zip"]
-        for name in rejected + ["static/data/table_map.json", "app/services/new.py"]:
-            self.put(name, "fixture")
+        for name in rejected + [".env", "static/data/table_map.json", "app/services/new.py"]:
+            self.put(name, "BUSINESS_DATASOURCE_NAME=fixture-business\n" if name == ".env" else "fixture")
         self.track()
         self.put("app/untracked.py", "local only")
         metadata = release.build(self.root, self.output)
@@ -73,8 +73,23 @@ class ReleaseTests(unittest.TestCase):
         with zipfile.ZipFile(self.output / platform_pkg) as archive:
             self.assertFalse(set(rejected) & set(archive.namelist()))
             self.assertNotIn("app/untracked.py", archive.namelist())
+            self.assertIn(".env", archive.namelist())
             self.assertIn("static/data/table_map.json", archive.namelist())
             self.assertIn("app/services/new.py", archive.namelist())
+
+    def test_packaged_env_keeps_reviewed_defaults_and_rejects_credentials(self):
+        self.put('.env', '# private note excluded from package\nBUSINESS_DATASOURCE_NAME=assigned-business\nAPP_SCHEMA=eca61f00-e292-48ae-8767-c57826706e6a\nBASE_QUERY_URL=https://base.fixture/query\n')
+        metadata = release.build(self.root, self.output)
+        for key in ('basePackage', 'platformPackage'):
+            with zipfile.ZipFile(self.output / metadata[key]) as archive:
+                value = archive.read('.env').decode()
+                self.assertIn('BUSINESS_DATASOURCE_NAME=assigned-business', value)
+                self.assertNotIn('private note', value)
+        for unsafe in ('API_KEY=fixture-secret', 'BASE_QUERY_URL=https://user:fixture-secret@base.fixture/query', 'BASE_QUERY_URL=https://base.fixture/query?token=fixture-secret', 'UNKNOWN_SETTING=fixture-secret'):
+            self.put('.env', 'BUSINESS_DATASOURCE_NAME=assigned-business\n' + unsafe + '\n')
+            with self.assertRaises(ValueError) as caught:
+                release.build(self.root, self.output)
+            self.assertNotIn('fixture-secret', str(caught.exception))
 
     def test_missing_source_rejected(self):
         (self.root / "run.py").unlink()

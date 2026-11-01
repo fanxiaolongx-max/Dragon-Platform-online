@@ -97,7 +97,7 @@ jobs:
 
           数据库部署：基座由 DBA 手动执行 db/init.sql / db/upgrade.sql；平台包启用严格基座契约，须先更新宿主平台，再由管理员从运维菜单预览并部署 SQLite 脚本。启动和业务请求不会自动补表。
 
-          两个包都不含 .env、业务数据库、日志、虚拟环境或 wheels。新环境需安装 Python，并能通过网络或内网 pip 镜像安装 requirements.txt；隔离网络需另行准备匹配目标系统与 Python 版本的离线依赖。
+          两个包内置经过配置白名单校验的 .env 连接/环境默认值；目标基座的进程环境优先，不允许打包密码或 Token。不含业务数据库、日志、虚拟环境或 wheels。新环境需安装 Python，并能通过网络或内网 pip 镜像安装 requirements.txt；隔离网络需另行准备匹配目标系统与 Python 版本的离线依赖。
           包只迁移应用代码与初始化 SQL；基座连接、模型配置和已有业务数据需在目标环境单独配置或迁移。基座包保留 MySQL 初始化 SQL，平台使用 SQLite 初始化 SQL；真实内网基座仍需部署验证。
           EOF
           if gh release view "$tag" --json isDraft --jq .isDraft > draft.txt 2> lookup.err; then

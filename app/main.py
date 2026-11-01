@@ -7,10 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 
-from app.config import settings
+from app.config import adapt_settings_from_headers, settings
 from app.core.logger import logger
 from app.core.exceptions import register_exception_handlers
 from app.routers import health, report, data_element, data_source, data_query, table_map, agent, air, environment, diagnostics
+from app import db
 from app.db import close_client, detect_sql_dialect
 from app.utils.sql_contract import assert_host_contract
 
@@ -32,10 +33,13 @@ def create_app() -> FastAPI:
     # 注册异常处理器
     register_exception_handlers(app)
 
-    # CORS配置
+    # CORS配置（同时兼容 .env 列表与沙箱/内网反代请求）
+    cors_origins = list(settings.CORS_ORIGINS or [])
+    if "*" not in cors_origins:
+        cors_origins.append("*")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"]
@@ -46,6 +50,10 @@ def create_app() -> FastAPI:
     # 页面、脚本、样式每次向服务器核对（未变化时 304），更新应用后浏览器不会继续用缓存里的旧版本。
     @app.middleware("http")
     async def revalidate_static(request, call_next):
+        switched = adapt_settings_from_headers(request.headers)
+        if switched:
+            db._dialect_checked = False
+            logger.info(f"根据请求头域名自动对齐线上基座环境：{switched} (APP_SCHEMA={settings.APP_SCHEMA[:8]}...)")
         response = await call_next(request)
         path = request.url.path
         if request.method == "GET" and (path.endswith(("/", ".html", ".js", ".css")) or path in ("/dev", "/api-test")):

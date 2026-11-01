@@ -16,7 +16,14 @@ from email.utils import parsedate_to_datetime
 
 import httpx
 
-from app.config import settings
+from app.config import (
+    BETA_QUERY_URL,
+    BETA_SCHEMA,
+    KNOWN_BUSINESS_DATASOURCES,
+    PROD_QUERY_URL,
+    PROD_SCHEMA,
+    settings,
+)
 from app.core.exceptions import DatabaseError, QueryValidationError
 from app.core.logger import logger
 from app.core.diagnostic_safety import clean, group_name
@@ -147,8 +154,16 @@ async def _base_request(method, url, **kwargs):
             error.data = {"retryAfter": delay}
             raise error
         if response.is_error:
-            logger.warning('BASE_REQUEST_FAILURE ' + json.dumps({**metadata, 'httpStatus': response.status_code, 'code': clean(code)}, ensure_ascii=False))
-            raise DatabaseError(f"基座 API 请求失败（HTTP {response.status_code}，请求编号 {request_id}）", data={'requestId': request_id, 'httpStatus': response.status_code})
+            raw_msg = (data.get('message') or data.get('msg') or data.get('error')) if isinstance(data, dict) else ''
+            if not raw_msg and response.text:
+                raw_msg = response.text[:200]
+            err_msg_clean = clean(raw_msg) if raw_msg else ''
+            log_meta = {**metadata, 'httpStatus': response.status_code, 'code': clean(code)}
+            if err_msg_clean:
+                log_meta['message'] = err_msg_clean
+            logger.warning('BASE_REQUEST_FAILURE ' + json.dumps(log_meta, ensure_ascii=False))
+            detail = f"（HTTP {response.status_code}，{err_msg_clean}，请求编号 {request_id}）" if err_msg_clean else f"（HTTP {response.status_code}，请求编号 {request_id}）"
+            raise DatabaseError(f"基座 API 请求失败{detail}", data={'requestId': request_id, 'httpStatus': response.status_code, 'message': err_msg_clean})
         if not isinstance(data, dict):
             raise DatabaseError("基座 API 返回了无效的 JSON 响应")
         return data
@@ -173,20 +188,75 @@ async def base_execute_app_schema(sql: str) -> dict:
     assert_app_write(sql, backslash_escapes=sql_helper.BACKSLASH_ESCAPES)
     # 身份头 x-app-id / x-app-level 由基座 venv sitecustomize.py 自动注入，应用禁止手动设置
     # 本地开发（非基座环境）时 sitecustomize.py 不存在，通过 INJECT_IDENTITY_HEADERS 开关手动注入
+    app_id = settings.APP_UUID or settings.APP_SCHEMA
     headers = (
-        {"x-app-id": settings.APP_UUID, "x-app-level": settings.APP_LEVEL}
+        {"x-app-id": app_id, "x-app-level": settings.APP_LEVEL}
         if settings.INJECT_IDENTITY_HEADERS
         else None
     )
-    return await _base_request("POST",
-        _base_execute_url(),
-        json={
-            "datasourceId": settings.APP_DATASOURCE_ID,
-            "schema": settings.APP_SCHEMA,
-            "sql": sql,
-        },
-        headers=headers,
-    )
+    payload = {
+        "datasourceId": settings.APP_DATASOURCE_ID,
+        "schema": settings.APP_SCHEMA,
+        "sql": sql,
+    }
+    try:
+        return await _base_request("POST", _base_execute_url(), json=payload, headers=headers)
+    except DatabaseError as exc:
+        http_status = (exc.data or {}).get("httpStatus") if isinstance(getattr(exc, "data", None), dict) else None
+        if headers is None and http_status in (401, 403) and app_id:
+            settings.INJECT_IDENTITY_HEADERS = True
+            return await _base_request(
+                "POST",
+                _base_execute_url(),
+                json=payload,
+                headers={"x-app-id": app_id, "x-app-level": settings.APP_LEVEL},
+            )
+        raise
+
+
+def _extract_datasource_names(body: dict) -> list[str]:
+    candidates = [body.get("data"), body.get("rows"), body.get("list")]
+    data = body.get("data")
+    if isinstance(data, dict):
+        candidates += [data.get(key) for key in ("rows", "list", "items", "datasources", "dataSources")]
+    rows = next((value for value in candidates if isinstance(value, list)), None)
+    names: list[str] = []
+    for row in rows or []:
+        if isinstance(row, str):
+            names.append(row)
+        elif isinstance(row, dict):
+            names.extend(
+                str(row[key])
+                for key in ("name", "datasourceName", "dataSourceName", "groupName")
+                if isinstance(row.get(key), str)
+            )
+    return names
+
+
+async def _adapt_business_datasource() -> bool:
+    """当配置的业务数据源名称在当前基座不存在时，从 /datasources 清单匹配标准 NetCare 业务数据源。"""
+    try:
+        body = await _base_request("GET", _base_datasources_url(), timeout=5.0)
+        if not isinstance(body, dict) or body.get("code") not in (0, "0"):
+            return False
+        names = _extract_datasource_names(body)
+        if not names or settings.BUSINESS_DATASOURCE_NAME in names:
+            return False
+        for candidate in KNOWN_BUSINESS_DATASOURCES:
+            if candidate in names:
+                old_name = settings.BUSINESS_DATASOURCE_NAME
+                settings.BUSINESS_DATASOURCE_NAME = candidate
+                logger.info(f"业务数据源已自适应切换：{old_name} -> {candidate}")
+                return True
+        for name in names:
+            if name.lower().startswith("netcare"):
+                old_name = settings.BUSINESS_DATASOURCE_NAME
+                settings.BUSINESS_DATASOURCE_NAME = name
+                logger.info(f"业务数据源已自适应切换：{old_name} -> {name}")
+                return True
+    except Exception as exc:
+        logger.debug(f"业务数据源自适应探测跳过：{exc}")
+    return False
 
 
 async def base_query_business(sql: str, limit: int = 100) -> dict:
@@ -194,14 +264,34 @@ async def base_query_business(sql: str, limit: int = 100) -> dict:
     assert_read_query(sql, backslash_escapes=sql_helper.BACKSLASH_ESCAPES)
     if not settings.BUSINESS_DATASOURCE_NAME:
         raise RuntimeError("未注入 BUSINESS_DATASOURCE_NAME，请创建应用时指定业务数据库")
-    return await _base_request("POST",
-        settings.BASE_QUERY_URL,
-        json={
-            "datasourceName": settings.BUSINESS_DATASOURCE_NAME,
-            "sql": sql,
-            "limit": max(1, min(1000, int(limit))),
-        },
-    )
+    try:
+        body = await _base_request("POST",
+            settings.BASE_QUERY_URL,
+            json={
+                "datasourceName": settings.BUSINESS_DATASOURCE_NAME,
+                "sql": sql,
+                "limit": max(1, min(1000, int(limit))),
+            },
+        )
+        # Some base versions encode the same missing-source failure in HTTP 200.
+        if body.get('code') not in (0, '0') and '数据源不存在' in str(body.get('message', '')):
+            raise DatabaseError(clean(body.get('message')))
+        return body
+    except DatabaseError as exc:
+        if (
+            "数据源不存在" in str(exc)
+            and settings.BUSINESS_DATASOURCE_NAME.lower().startswith("netcare")
+            and await _adapt_business_datasource()
+        ):
+            return await _base_request("POST",
+                settings.BASE_QUERY_URL,
+                json={
+                    "datasourceName": settings.BUSINESS_DATASOURCE_NAME,
+                    "sql": sql,
+                    "limit": max(1, min(1000, int(limit))),
+                },
+            )
+        raise
 
 
 async def base_find_table_datasource(table_name: str) -> dict:
@@ -268,12 +358,63 @@ async def query_business(sql: str, limit: int = 100) -> list[dict]:
 _dialect_checked = False
 
 
+async def _probe_schema_has_tables(query_url: str, schema: str) -> bool:
+    """轻量探测指定 (query_url, schema) 是否存在应用表。"""
+    if not query_url or not schema:
+        return False
+    safe_schema = schema.replace("'", "''")
+    sql = f"SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='{safe_schema}' LIMIT 1"
+    try:
+        body = await _base_request(
+            "POST", query_url,
+            json={
+                "datasourceId": settings.APP_DATASOURCE_ID,
+                "schema": schema,
+                "sql": sql,
+                "limit": 1,
+            },
+            timeout=3.0,
+        )
+        if not isinstance(body, dict) or body.get("code") not in (0, "0"):
+            return False
+        rows = (body.get("data") or {}).get("rows") or []
+        return len(rows) > 0
+    except Exception:
+        return False
+
+
+async def _ensure_online_profile() -> None:
+    """在测试/生产数字人基座之间主动探测并自适应切换 Schema 与 URL。"""
+    import os
+    if os.environ.get("PLATFORM_DATA_API"):
+        return
+    if settings.APP_SCHEMA not in (BETA_SCHEMA, PROD_SCHEMA):
+        return
+    if await _probe_schema_has_tables(settings.BASE_QUERY_URL, settings.APP_SCHEMA):
+        return
+    alt_schema = PROD_SCHEMA if settings.APP_SCHEMA == BETA_SCHEMA else BETA_SCHEMA
+    alt_url = PROD_QUERY_URL if settings.APP_SCHEMA == BETA_SCHEMA else BETA_QUERY_URL
+    candidates = [
+        (settings.BASE_QUERY_URL, alt_schema),
+        (alt_url, alt_schema),
+        (alt_url, settings.APP_SCHEMA),
+    ]
+    for cand_url, cand_schema in candidates:
+        if await _probe_schema_has_tables(cand_url, cand_schema):
+            settings.BASE_QUERY_URL = cand_url
+            settings.APP_SCHEMA = cand_schema
+            settings.APP_UUID = cand_schema
+            logger.info(f"检测到匹配的线上基座环境，已自动对齐 APP_SCHEMA={cand_schema[:8]}...")
+            return
+
+
 async def detect_sql_dialect() -> None:
     """探测应用库是否把反斜杠当转义符（MySQL 是，SQLite 否），只需成功探测一次。"""
     global _dialect_checked
     if _dialect_checked:
         return
     try:
+        await _ensure_online_profile()
         rows = await query_app_schema("SELECT 'a\\\\b' AS v", limit=1)
         value = str(next(iter(rows[0].values()))) if rows else ""
         sql_helper.set_backslash_escapes(len(value) == 3)

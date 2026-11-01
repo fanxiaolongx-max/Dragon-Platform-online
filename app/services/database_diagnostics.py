@@ -69,11 +69,26 @@ def datasource_match(body, candidate=''):
         if isinstance(row, str): names.append(row)
         elif isinstance(row, dict):
             names.extend(str(row[key]) for key in ('name', 'datasourceName', 'dataSourceName', 'groupName') if isinstance(row.get(key), str))
-    return {'configuredBusinessName': group_name(configured), 'configuredNameListed': configured in names if names or rows == [] else None,
+    suggested = None
+    if configured not in names and names and configured.lower().startswith('netcare'):
+        for std in ('netcareClaw-operate-digital-readonly', 'netcareClaw-operate-digital-business', 'netcare-digital-human-readonly', 'netcare-digital-human-business'):
+            if std in names:
+                suggested = std
+                break
+        if not suggested:
+            suggested = next((n for n in names if n.lower().startswith('netcare')), None)
+        if suggested:
+            settings.BUSINESS_DATASOURCE_NAME = suggested
+            logger.info('BUSINESS_SOURCE_ADAPTED ' + json.dumps({'from': group_name(configured), 'to': group_name(suggested), 'reason': 'datasource-catalog'}, ensure_ascii=False))
+    res = {'configuredBusinessName': group_name(configured), 'configuredNameListed': configured in names if names or rows == [] else None,
             'catalogParsed': rows is not None, 'catalogItemCount': len(rows) if rows is not None else None,
             'namesComparable': bool(names) or rows == [], 'otherNamesExported': False,
             # 管理员输入的候选组名（如其他正常应用使用的组名）只回答是否在清单中，不查询该库、不列出其他名称。
             **({'candidateName': group_name(candidate), 'candidateListed': candidate in names if names or rows == [] else None} if candidate else {})}
+    if suggested:
+        res['suggestedBusinessName'] = group_name(suggested)
+        res['resolvedBusinessName'] = group_name(settings.BUSINESS_DATASOURCE_NAME)
+    return res
 
 
 def manifest(table='', full=False):
@@ -138,7 +153,11 @@ async def probe(key, table='', candidate=''):
                     raise QueryValidationError(error_summary(body) or '数据源接口业务响应失败')
                 result['datasourceMatch'] = datasource_match(body, str(candidate or '').strip()[:128])
                 if result['datasourceMatch']['configuredNameListed'] is False:
-                    result.update(status='warning', message='运行时业务组未在基座数据源清单中匹配；请核对基座分配、注入值与旧 .env，不会自动切换其他库')
+                    suggested = result['datasourceMatch'].get('suggestedBusinessName')
+                    if suggested:
+                        result.update(status='warning', message=f"原业务组 '{result['datasourceMatch']['configuredBusinessName']}' 未匹配；已根据基座清单自动切换为 '{group_name(suggested)}'，后续测试使用新业务组")
+                    else:
+                        result.update(status='warning', message='运行时业务组未在基座数据源清单中匹配；请核对基座分配、注入值与旧 .env，不会自动切换其他库')
                 listed = result['datasourceMatch'].get('candidateListed')
                 if listed is not None:
                     note = ('候选业务组在基座清单中：可在基座应用配置里改为分配该业务库（或设置 BUSINESS_DATASOURCE_NAME）后重启应用' if listed
