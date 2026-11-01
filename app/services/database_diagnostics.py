@@ -176,6 +176,8 @@ async def probe(key, table='', candidate=''):
                 result.update(source=source, sql=sql.replace(settings.APP_SCHEMA, '<assigned-app-schema>') if settings.APP_SCHEMA else sql)
                 rows = await (db.query_app_schema if source == 'app' else db.query_business)(sql, limit=1)
                 result['rowCount'] = len(rows)
+                if key == 'table-double':
+                    result['message'] = '双引号表名已自动兼容转换为 MySQL 反引号 / Auto-normalized double-quoted table identifier to backticks'
                 if key in ('columns-simple', 'columns-current', 'scan-columns', 'app-metadata', 'business-tables') and not rows:
                     result.update(status='warning', message='查询成功但未返回元数据；静态目录不证明实际表存在 / No metadata returned')
         await asyncio.wait_for(execute(), timeout=20)

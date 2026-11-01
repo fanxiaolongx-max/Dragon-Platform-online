@@ -259,17 +259,32 @@ async def _adapt_business_datasource() -> bool:
     return False
 
 
+_DOUBLE_QUOTED_TABLE_RE = re.compile(
+    r'\b(FROM|JOIN)\s+"([A-Za-z_][A-Za-z0-9_]*)"(?:\s*\.\s*"([A-Za-z_][A-Za-z0-9_]*)")?',
+    re.IGNORECASE,
+)
+
+
+def _normalize_table_quotes(sql: str) -> str:
+    """将 FROM/JOIN 后的双引号表名（GaussDB/PostgreSQL 风格）转换为 MySQL/SQLite 兼容的反引号。"""
+    return _DOUBLE_QUOTED_TABLE_RE.sub(
+        lambda m: f"{m.group(1)} `{m.group(2)}`.`{m.group(3)}`" if m.group(3) else f"{m.group(1)} `{m.group(2)}`",
+        sql,
+    )
+
+
 async def base_query_business(sql: str, limit: int = 100) -> dict:
     """API-Q1: 查询业务库（只读，按业务库组名 datasourceName）"""
     assert_read_query(sql, backslash_escapes=sql_helper.BACKSLASH_ESCAPES)
     if not settings.BUSINESS_DATASOURCE_NAME:
         raise RuntimeError("未注入 BUSINESS_DATASOURCE_NAME，请创建应用时指定业务数据库")
+    normalized_sql = _normalize_table_quotes(sql)
     try:
         body = await _base_request("POST",
             settings.BASE_QUERY_URL,
             json={
                 "datasourceName": settings.BUSINESS_DATASOURCE_NAME,
-                "sql": sql,
+                "sql": normalized_sql,
                 "limit": max(1, min(1000, int(limit))),
             },
         )
@@ -287,7 +302,7 @@ async def base_query_business(sql: str, limit: int = 100) -> dict:
                 settings.BASE_QUERY_URL,
                 json={
                     "datasourceName": settings.BUSINESS_DATASOURCE_NAME,
-                    "sql": sql,
+                    "sql": normalized_sql,
                     "limit": max(1, min(1000, int(limit))),
                 },
             )
