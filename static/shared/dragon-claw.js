@@ -523,7 +523,7 @@
      - owner 不同（例如 AI 月报用过之后回到助理浮窗）或 fresh=true 时先新建 ADC 会话，互不串上下文；
      - 新建会话失败（内网未捕获 session-init 路由等）时沿用当前会话，并在提问前声明这是一个全新的独立任务。 */
   const FRESH_NOTE=CTX+'以下是一个全新的独立任务，忽略本会话之前的所有内容。\n';
-  async function rawAsk(prompt, onUpdate, signal){
+  async function rawAsk(prompt, onUpdate, signal, protocol){
     signal?.throwIfAborted();
     const C=window.ADCChat;
     const first=!C.configured;
@@ -559,7 +559,7 @@
         if(!ready && !C.configured) throw new Error('内嵌原页面未就绪：聊天输入框未出现，请展开「原 ADC 聊天页」后重试。');
       }
       let latest='';
-      await C.ask(prompt, { onUpdate:t=>{ if(signal?.aborted)return;latest=t||''; onUpdate&&onUpdate(latest); } });
+      await C.ask(prompt, { protocol, onUpdate:t=>{ if(signal?.aborted)return;latest=t||''; onUpdate&&onUpdate(latest); } });
       signal?.throwIfAborted();return latest;
     } finally {
       if(stealthed){ wrapEl.classList.remove('stealth'); lockFrame(false); }
@@ -586,7 +586,7 @@
       let isNew=false;
       if(fresh || (laneOwner && laneOwner!==owner)){ await reset(); isNew=true; }
       laneOwner=owner;
-      const ask=async(prompt, onUpdate)=>{ const text=(pendingNote&&!used?FRESH_NOTE:'')+prompt; used=true; pendingNote=false; signal?.throwIfAborted();return window.AiReportTasks?.wait(rawAsk(text, onUpdate,signal),signal)||rawAsk(text,onUpdate,signal); };
+      const ask=async(prompt, onUpdate)=>{ const text=(pendingNote&&!used?FRESH_NOTE:'')+prompt; used=true; pendingNote=false; signal?.throwIfAborted();const protocol=owner==='air'?'application-json-v1':undefined;return window.AiReportTasks?.wait(rawAsk(text,onUpdate,signal,protocol),signal)||rawAsk(text,onUpdate,signal,protocol); };
       const fork=async()=>{ used=false; await reset(); };
       signal?.throwIfAborted();return await fn({ask, reset:fork, isNew}); }
       finally{signal?.removeEventListener('abort',abort); laneBusy=null; updateButtons(); }

@@ -5,7 +5,7 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.5.2`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.5.3`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
@@ -294,6 +294,12 @@ Internal Tooling Project · [Dragon Platform](https://github.com/fanxiaolongx-ma
 
 停止时会隔离旧异步任务持有的文档对象，并使用独立的取消令牌拒绝旧响应。立即重新生成使用新令牌，旧任务不能覆盖新结果或清除新任务的忙碌状态。停止会取消尚未触发的尺寸自动调整与批量队列；已完成的内容保留，不自动保存。停止仅针对月报生成，不取消单独运行的 Dragon Claw 助理会话。
 
+
+### 应用工具协议（1.5.3）
+
+格子生成通过 `application-json-v1` 标记告诉 Dragon Platform：由月报页面执行自己的 JSON 工具，平台只返回模型正文，不再注入另一套 ADC 查询工具或追加查询依据。普通 Dragon Claw 对话继续使用平台的只读查库工具；原生数字人 ADC 可忽略这个可选参数。平台需同步更新 ADC bridge；新版平台也识别旧版月报的完整任务信封，因此已有页面无需丢弃未保存编辑即可获得修复。
+
+来源查询失败或没有返回来源时，在进入计算及文字总结前报出来源名称和错误，不能由生成的配方补成 0。查询成功且返回空数组仍是合法结果。连接错误提示不再断言“数据和提示词没有问题”。
 
 ### 多格子操作与诊断（1.5.2）
 

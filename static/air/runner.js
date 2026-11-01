@@ -72,6 +72,12 @@
         signal?.throwIfAborted();
         // Outline/result sources already live in this report; do not require a backend for navigation.
         const {input,missing}=cell.recipe.sources.every(source=>source.kind==='report')?{input:{},missing:[]}:await API.post('/api/ai-report/run-data',{month,recipe:cell.recipe},{signal});
+        const failed=[...(missing||[])];
+        for(const source of cell.recipe.sources)if(source.kind!=='report'&&input[source.id]==null&&!failed.some(item=>item.id===source.id))failed.push({id:source.id,label:source.label,error:'数据源未返回结果 / No source result'});
+        if(failed.length){
+            const error=new Error('数据源查询失败 / Source query failed：'+failed.map(item=>(item.label||item.id)+'：'+(item.error||'未返回结果 / No result')).join('；')+'。不能将查询失败当作 0 / Failed queries cannot be treated as zero.');
+            error.missing=failed;throw error;
+        }
         input.$month=month;
         for(const source of cell.recipe.sources)if(source.kind==='report')input[source.id]=reportInput(cell,source);
         // Overviews quote other cells' conclusions on purpose, so the one-summary check does not apply to them.
@@ -96,6 +102,7 @@
             if(withNarrative)cell.output=await narrative(cell,month,style);
         }catch(error){
             if(error.name==='AbortError')throw error;
+            if(error.missing)cell.missing=error.missing;
             cell.output=AiReportModel.normalizeOutput({...(cell.output||{}),month,error:error.message||String(error)});
             throw error;
         }

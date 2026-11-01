@@ -38,8 +38,8 @@
         // The last run's error is always shown in the chat, with what to do about a dropped connection.
         function failureBanner(cell){
             const error=cell?.output?.error;if(!error||kind!=='cell')return '';
-            const offline=/Failed to fetch|NetworkError|Load failed|网络/i.test(error);
-            return `<div class="air-chat-failure" role="status"><strong>${t('最近一次运行失败','The last run failed')}</strong><p>${esc(error)}</p><small>${offline?t('浏览器没有连上服务器（常见于服务正在重启或网络中断），数据和提示词都没有问题；稍等后点“再试一次”或章节的 ⟳ 刷新即可。','The browser could not reach the server (often a restart or network drop). Try again shortly.'):t('可以在下面说明怎么改后重新生成；打开对话框右上角“调用记录”可以看到和 AI 来回的完整过程。','Describe the fix below, or turn on Developer mode (top right) to see every step.')}</small></div>`;
+            const offline=/Failed to fetch|NetworkError|Load failed|网络|连接中断/i.test(error);
+            return `<div class="air-chat-failure" role="status"><strong>${t('最近一次运行失败','The last run failed')}</strong><p>${esc(error)}</p><small>${offline?t('浏览器未收到可读取的响应，可能是连接中断、代理拦截或后端异常。请结合调用记录和平台日志定位后重试。','No readable response was received. Check the connection, proxy and backend logs before retrying.'):t('可以在下面说明怎么改后重新生成；打开对话框右上角“调用记录”可以看到和 AI 来回的完整过程。','Describe the fix below, or turn on Developer mode (top right) to see every step.')}</small></div>`;
         }
         // Developer records: one group per AI request (prompts sent, replies, tools, retries) and local run steps.
         const stepTitle=(step,index)=>step.kind==='ai'?`→ ${t('模型往返','Model call')} ${index}${step.ms?` · ${(step.ms/1000).toFixed(1)}s`:''}${step.toolCalls?` · ${t('要调用工具','calls tools')}`:''}${step.error?' · ⚠ '+esc(step.error.slice(0,60)):''}`:step.kind==='tool'?`🔧 ${t('工具','Tool')} ${esc(step.name)}${step.error?' · ⚠':''}`:step.kind==='retry'?`↻ ${t('要求模型重试','Asked the model to retry')}`:esc(step.kind);

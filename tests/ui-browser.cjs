@@ -208,6 +208,7 @@ async function concurrencyFlow(page,origin){
     const cells=AiReportApp.state.doc.chapters.flatMap(c=>c.cells).filter(c=>c.prompt&&!c.recipe),ids=cells.slice(0,8).map(c=>c.id);
     window.__requests=0;window.__active=0;window.__maxActive=0;window.__release=[];
     ADCChat.ask=async(prompt,options)=>{
+      if(options.protocol!=='application-json-v1')throw new Error('Cell generation must own its JSON tool protocol');
       const marker=prompt.match(/TEST_CELL_\d+/)?.[0];window.__requests++;window.__active++;window.__maxActive=Math.max(window.__maxActive,window.__active);
       await new Promise(resolve=>window.__release.push(()=>{window.__active--;options.onUpdate(JSON.stringify({type:'recipe',reply:'ok',recipe:{summary:{zh:'测试'},sources:[],compute:'function compute(){return {marker:'+JSON.stringify(marker)+'};}',render:'function render(result,kit){return kit.text(result.marker);}',narrative:null}}));resolve();}));
     };
