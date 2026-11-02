@@ -88,56 +88,56 @@
   if(st.zoom && ['50','70','100'].indexOf(String(st.zoom))>-1) frameZoomSel.value=String(st.zoom);
   if(st.agent===false) agentSw.checked=false;
   frameZoomSel.addEventListener('change', applyFrameZoom);
-  /* 原 ADC 聊天页亮色 / 暗色（默认亮色，按钮显示要切换到的模式，选择按浏览器记住）。
-     内嵌页面同源：先用它自带的亮色（去掉 dark 类与主题属性、停用 prefers-color-scheme: dark 规则，页面再切回暗色时纠正）；
-     页面本身只有暗色、测得背景仍偏暗时，整页反色成亮色，图片和视频再反回来保持原色。切回暗色时撤销。 */
+  /* 原 ADC 聊天页亮色：内嵌页面同源时先用它自带的亮色（去掉 dark 类与主题属性、停用 prefers-color-scheme: dark 规则，
+     页面再切回暗色时纠正）。仍然偏暗（或跨域读不到页面）时整页反色成亮色，同源时图片和视频再反回来保持原色。
+     按钮直接开关反色（「反色」/「原色」），点了就一定生效，选择按浏览器记住；没点过时自动判断。 */
   const frameThemeBtn=$('#aiBarFrameTheme');
   const INVERT='invert(1) hue-rotate(180deg)';
-  let themeObserver=null, themeTimer=0, nativeTouched=false;
+  let themeObserver=null, themeTimer=0;
+  delete st.frameTheme;
   const frameDoc=()=>{try{const d=frame.contentDocument;return d&&d.documentElement&&d.location.href!=='about:blank'?d:null;}catch(_){return null;}};
+  // 跨域：拿不到 contentDocument，但 iframe 已经指向一个页面
+  const frameCrossOrigin=()=>{try{return frame.contentDocument===null&&!!frame.getAttribute('src')&&!/^about:/.test(frame.src);}catch(_){return true;}};
   function frameLooksDark(){
     const d=frameDoc();if(!d?.body)return null;
     const w=d.defaultView,width=d.documentElement.clientWidth,height=d.documentElement.clientHeight;if(!width||!height)return null;
-    const lum=el=>{for(let n=el;n;n=n.parentElement){const m=w.getComputedStyle(n).backgroundColor.match(/[\d.]+/g);if(m&&(m.length<4||Number(m[3])>0.5)){const [r,g,b]=m.slice(0,3).map(Number);return (0.2126*r+0.7152*g+0.0722*b)/255;}}return 1;};
-    const points=[[0.5,0.5],[0.12,0.5],[0.5,0.12],[0.85,0.85]].map(([x,y])=>d.elementFromPoint(width*x,height*y)).filter(Boolean);
+    const rgb=value=>{const m=String(value||'').match(/[\d.]+/g);return m&&(m.length<4||Number(m[3])>0.5)?m.slice(0,3).map(Number):null;};
+    const luma=([r,g,b])=>(0.2126*r+0.7152*g+0.0722*b)/255;
+    // 一路往上找不透明背景；都透明（暗色多半来自 color-scheme 画布）时按文字颜色反推：浅色文字说明背景是暗的
+    const lum=el=>{for(let n=el;n;n=n.parentElement){const c=rgb(w.getComputedStyle(n).backgroundColor);if(c)return luma(c);}const t=rgb(w.getComputedStyle(el).color);return t?1-luma(t):1;};
+    const points=[[0.5,0.5],[0.12,0.5],[0.5,0.12],[0.85,0.85],[0.3,0.75]].map(([x,y])=>d.elementFromPoint(width*x,height*y)).filter(Boolean);
     if(!points.length)return null;
     return points.reduce((sum,el)=>sum+lum(el),0)/points.length<0.4;
   }
   function forceNativeLight(d){
     for(const n of [d.documentElement,d.body].filter(Boolean)){
-      for(const c of ['dark','theme-dark','dark-mode','dark-theme'])if(n.classList.contains(c)){n.classList.remove(c);n.classList.add('light');nativeTouched=true;}
-      for(const a of ['data-theme','theme','data-color-mode','data-mode','data-bs-theme','data-color-scheme'])if(/dark/i.test(n.getAttribute(a)||'')){n.setAttribute(a,'light');nativeTouched=true;}
+      for(const c of ['dark','theme-dark','dark-mode','dark-theme'])if(n.classList.contains(c)){n.classList.remove(c);n.classList.add('light');}
+      for(const a of ['data-theme','theme','data-color-mode','data-mode','data-bs-theme','data-color-scheme'])if(/dark/i.test(n.getAttribute(a)||''))n.setAttribute(a,'light');
     }
-    if(d.documentElement.style.colorScheme!=='light'){d.documentElement.style.colorScheme='light';}
+    if(d.documentElement.style.getPropertyValue('color-scheme')!=='light')d.documentElement.style.setProperty('color-scheme','light','important');
     for(const sheet of d.styleSheets){let rules;try{rules=sheet.cssRules;}catch(_){continue;}
-      for(const rule of rules)if(rule.media&&/prefers-color-scheme\s*:\s*dark/i.test(rule.media.mediaText)){rule.media.mediaText='not all';nativeTouched=true;}}
+      for(const rule of rules)if(rule.media&&/prefers-color-scheme\s*:\s*dark/i.test(rule.media.mediaText))rule.media.mediaText='not all';}
   }
+  const frameInverted=()=>frame.style.filter.includes('invert');
   function setInvert(on){
     frame.style.filter=on?INVERT:'';
+    if(frameThemeBtn){ frameThemeBtn.textContent=on?'原色':'反色'; frameThemeBtn.setAttribute('aria-pressed', String(on)); }
     const d=frameDoc();if(!d)return;
     let fix=d.getElementById('dc-invert-fix');
     if(on&&!fix){fix=d.createElement('style');fix.id='dc-invert-fix';fix.textContent='img,video,canvas,picture,[style*="background-image"]{filter:'+INVERT+'}';(d.head||d.documentElement).append(fix);}
     if(!on&&fix)fix.remove();
   }
-  function lightPass(){
-    if(st.frameTheme==='dark')return;
-    const d=frameDoc();if(!d)return;
-    themeObserver?.disconnect();
-    try{forceNativeLight(d);}catch(_){}
-    const dark=frameLooksDark();if(dark!==null)setInvert(dark);
-    if(!themeObserver)themeObserver=new MutationObserver(()=>{clearTimeout(themeTimer);themeTimer=setTimeout(lightPass,200);});
+  function applyFrameTheme(){
+    const d=frameDoc();
+    if(d){themeObserver?.disconnect();try{forceNativeLight(d);}catch(_){}}
+    if(typeof st.frameInvert==='boolean')setInvert(st.frameInvert);
+    else{const dark=d?frameLooksDark():(frameCrossOrigin()?true:null);setInvert(dark===null?frameInverted():dark);}
+    if(!d)return;
+    if(!themeObserver)themeObserver=new MutationObserver(()=>{clearTimeout(themeTimer);themeTimer=setTimeout(applyFrameTheme,200);});
     themeObserver.observe(d.documentElement,{attributes:true,attributeFilter:['class','style','data-theme','theme','data-color-mode','data-mode','data-bs-theme','data-color-scheme'],childList:true,subtree:true});
   }
-  function applyFrameTheme(){
-    const dark=st.frameTheme==='dark';
-    if(frameThemeBtn){ frameThemeBtn.textContent=dark?'亮色':'暗色'; frameThemeBtn.setAttribute('aria-pressed', String(dark)); }
-    if(!dark){lightPass();return;}
-    themeObserver?.disconnect();themeObserver=null;setInvert(false);
-    // 改过页面自带主题时，空闲时重新加载内嵌页恢复它原来的暗色；有提问进行中则留到下次加载
-    if(nativeTouched&&!laneBusy&&!running){nativeTouched=false;try{frame.contentWindow.location.reload();}catch(_){}}
-  }
-  frame.addEventListener('load',()=>{nativeTouched=false;themeObserver?.disconnect();themeObserver=null;setTimeout(applyFrameTheme,50);});
-  if(frameThemeBtn) frameThemeBtn.onclick=()=>{ st.frameTheme=st.frameTheme==='dark'?'light':'dark'; applyFrameTheme(); persist(); };
+  frame.addEventListener('load',()=>{themeObserver?.disconnect();themeObserver=null;setTimeout(applyFrameTheme,50);});
+  if(frameThemeBtn) frameThemeBtn.onclick=()=>{ st.frameInvert=!frameInverted(); applyFrameTheme(); persist(); };
   agentSw.addEventListener('change', persist);
   applyFrameZoom();
   function setOpen(v){

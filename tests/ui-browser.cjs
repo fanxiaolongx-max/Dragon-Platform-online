@@ -172,13 +172,19 @@ async function realAdcFlow(page,origin){
     await page.evaluate(()=>{document.getElementById('aiBarFrame').contentDocument.body.style.background='#000';});
     await page.waitForFunction(()=>document.getElementById('aiBarFrame').style.filter.includes('invert'));
     assert.equal(await page.evaluate(()=>!!document.getElementById('aiBarFrame').contentDocument.getElementById('dc-invert-fix')),true,'Images are inverted back');
+    const btn=()=>page.locator('#aiBarFrameTheme').textContent();
+    assert.equal(await btn(),'原色');
     await page.evaluate(()=>document.getElementById('aiBarFrameTheme').click());
-    await page.waitForFunction(()=>{const d=document.getElementById('aiBarFrame').contentDocument;return d.readyState==='complete'&&d.documentElement.classList.contains('dark');});
-    assert.equal((await look()).filter,'','Dark mode removes the inversion and restores the page\'s own dark theme');
-    assert.equal(await page.locator('#aiBarFrameTheme').textContent(),'亮色');
+    assert.equal((await look()).filter,'','Clicking 原色 removes the inversion even though the page still looks dark');
+    assert.equal(await btn(),'反色');
+    await page.evaluate(()=>{document.getElementById('aiBarFrame').contentDocument.body.style.color='#eee';});
+    await new Promise(r=>setTimeout(r,400));
+    assert.equal((await look()).filter,'','A manual choice is not overridden by auto detection');
     await page.evaluate(()=>document.getElementById('aiBarFrameTheme').click());
-    await page.waitForFunction(()=>!document.getElementById('aiBarFrame').contentDocument.documentElement.classList.contains('dark'));
-    console.log('PASS: real ADC requests go through the embedded page and its own 新建对话, never the newSession API; embedded page is light by default (native theme or inversion) with a dark toggle.');
+    assert(( await look()).filter.includes('invert'),'Clicking 反色 always inverts');
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('api_test_aibar')).frameInvert),true,'The choice is remembered');
+    await page.evaluate(()=>{const s=JSON.parse(localStorage.getItem('api_test_aibar'));delete s.frameInvert;localStorage.setItem('api_test_aibar',JSON.stringify(s));});
+    console.log('PASS: real ADC requests go through the embedded page and its own 新建对话, never the newSession API; embedded page is light by default (native theme or inversion) and the 反色/原色 toggle always takes effect.');
   }finally{realAdcMode=false;}
 }
 async function environmentFlow(page,origin){
