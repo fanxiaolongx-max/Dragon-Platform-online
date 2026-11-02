@@ -16,7 +16,7 @@ from app.services import air_service
 from app.utils.sql_contract import assert_app_write, assert_host_contract
 
 ROOT = Path(__file__).resolve().parents[1]
-TABLES = {'t_report_template', 't_report_block', 't_report_config', 't_data_element', 't_data_source'}
+TABLES = {'t_report_template', 't_report_block', 't_report_config', 't_data_element', 't_data_source', 't_ai_model_config', 't_ai_model_state'}
 
 
 class AirContractTests(unittest.IsolatedAsyncioTestCase):
@@ -290,7 +290,7 @@ class DeploymentSchemaTests(unittest.TestCase):
         with patch.dict('os.environ', {}, clear=True):
             self.assertTrue(assert_host_contract())
 
-    def test_mysql_and_sqlite_deploy_the_same_five_tables_and_columns(self):
+    def test_mysql_and_sqlite_deploy_the_same_tables_and_columns(self):
         conn = sqlite3.connect(':memory:')
         self.addCleanup(conn.close)
         conn.executescript((ROOT / 'db/init.sqlite.sql').read_text())

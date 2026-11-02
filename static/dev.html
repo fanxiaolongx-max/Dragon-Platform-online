@@ -525,6 +525,7 @@ body.left-dragging{user-select:none;cursor:col-resize}
   <link rel="stylesheet" href="shared/dragon-claw.css">
 <script src="shared/environment-client.js"></script>
 <script src="shared/ops-log.js" data-page="dev"></script>
+<link rel="stylesheet" href="shared/model-settings.css">
 </head>
 <body>
   <header class="topbar">
@@ -812,7 +813,8 @@ body.left-dragging{user-select:none;cursor:col-resize}
   const ORIGIN = location.origin;
   const ENVIRONMENT = ENVIRONMENTS[ORIGIN];
   if (!Object.hasOwn(ENVIRONMENTS, ORIGIN)) {
-    throw new Error("请在测试或生产网站的同源页面运行脚本；不支持当前域名：" + ORIGIN);
+    console.info("当前地址未启用 ADC 页面通道；可在 AI 模型配置中连接独立模型 API。");
+    return;
   }
   if (window.ADCChat?.busy) throw new Error("请等待当前请求结束再重新安装。");
   window.ADCAutoCapture?.stop();
@@ -1640,6 +1642,7 @@ const GROUPS = [
     { m:'GET', p:'/data/table-map/data?name=risk_task_new&limit=20', name:'源表数据接口', desc:'源表直查底层 API（过滤/列选见「工具 → 源表直查」）', link:L.BIZ },
   ]},
   { key:'tools', name:'工具', icon:ICON.wrench, eps:[
+    { m:'★', p:'AI 模型配置', name:'AI model settings', desc:'ADC / 模型 API · 加密保存 · 测试连接', kind:'models', link:L.LOCAL },
     { m:'★', p:'数据库测试一键套件', name:'Database diagnostic suite', desc:'只读测试 / Read-only · 一键导出脱敏日志', kind:'diagnostics', link:L.DIAGNOSTICS },
     { m:'★', p:'源表直查', name:'源表 → 落地表映射 + 数据查询', desc:'过滤条件 / 列选择 / 不限行数', kind:'src', link:L.BIZ },
     { m:'★', p:'全表盘点', name:'所有表盘点 / 单表体检 / 前20行', desc:'source+landing+biz+元素表 全量校验', kind:'audit', link:L.BIZ },
@@ -1972,6 +1975,7 @@ function selectEp(gi,ei,el){
   document.querySelectorAll('.ep.active').forEach(x=>x.classList.remove('active'));
   el.classList.add('active');
   const ep=GROUPS[gi].eps[ei];
+  if(ep.kind==='models'){ window.AiOpsModelSettings?.show(); return; }
   current=ep;
 
   $('#emptyHint').hidden=true;
@@ -3410,6 +3414,8 @@ setTimeout(()=>{
   }
 },50);
 </script>
+<script src="shared/model-gateway.js"></script>
+<script src="shared/model-settings.js"></script>
 <script src="shared/dragon-claw.js"></script>
 <script src="shared/data-environment.js"></script>
 <script src="shared/database-diagnostics.js"></script>

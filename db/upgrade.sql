@@ -1,4 +1,4 @@
--- 显式升级部署：AIR 复用既有五表，不新增请求表。
+-- 显式升级部署：AIR 复用既有报告表；独立模型配置新增两张应用表。
 -- 只补齐缺失结构，不重放种子数据，不改写已有报告。
 -- ============================================================
 -- 写报告服务 - 数据库初始化脚本
@@ -94,3 +94,18 @@ CREATE TABLE IF NOT EXISTS `t_report_config` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ============================================================
+
+-- AI model credentials: authenticated ciphertext only; key stays outside the application DB.
+CREATE TABLE IF NOT EXISTS `t_ai_model_config` (
+  `id` VARCHAR(32) NOT NULL,
+  `config_cipher` LONGTEXT NOT NULL,
+  `revision` VARCHAR(32) NOT NULL,
+  `updated_at` DATETIME DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+CREATE TABLE IF NOT EXISTS `t_ai_model_state` (
+  `id` VARCHAR(32) NOT NULL,
+  `mode` VARCHAR(16) NOT NULL DEFAULT 'adc',
+  `config_id` VARCHAR(32) NOT NULL DEFAULT '',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

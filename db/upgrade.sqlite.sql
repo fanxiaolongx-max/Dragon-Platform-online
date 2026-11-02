@@ -86,3 +86,16 @@ CREATE TABLE IF NOT EXISTS t_report_config (
 CREATE INDEX IF NOT EXISTS idx_config_block ON t_report_config(report_id, block_id);
 
 -- ============================================================
+
+-- AI model credentials (same columns as the base MySQL schema).
+CREATE TABLE IF NOT EXISTS t_ai_model_config (
+  id TEXT PRIMARY KEY NOT NULL,
+  config_cipher TEXT NOT NULL,
+  revision TEXT NOT NULL,
+  updated_at DATETIME DEFAULT NULL
+);
+CREATE TABLE IF NOT EXISTS t_ai_model_state (
+  id TEXT PRIMARY KEY NOT NULL,
+  mode TEXT NOT NULL DEFAULT 'adc',
+  config_id TEXT NOT NULL DEFAULT ''
+);

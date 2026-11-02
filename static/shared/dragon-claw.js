@@ -308,16 +308,17 @@
     $('#aiBarDot').className='aibar-live'+(kind?' '+kind:'');
     const c=$('#adcStatus'); if(c) c.textContent=t;
   }
-  let running=false, stopRequested=false, primed=false, caps=null, capsErr='';
+  let running=false, stopRequested=false, primed=false, caps=null, capsErr='',panelController=null;
+  const directModel=()=>!!window.AiOpsModels?.ready();
   let lane=Promise.resolve(), laneOwner=null, laneBusy=null;
   const pendingConfirms=new Set();
   function updateButtons(){
-    const ready=onSite && hasClient;
+    const ready=(onSite && hasClient)||directModel();
     sendBtn.disabled=!ready;
     sendBtn.classList.toggle('busy', running);
     sendBtn.innerHTML=running?ICON.stop:ICON.send;
     sendBtn.title=running?'停止':'发送';
-    newSessBtn.disabled=!ready || !window.ADCChat?.configured || running || !!laneBusy;
+    newSessBtn.disabled=!ready || (!directModel()&&!window.ADCChat?.configured) || running || !!laneBusy;
     if(laneBusy && laneBusy!=='panel' && !running) $('#aiBarStatus').textContent='AI 月报正在使用对话…';
   }
   function autoGrow(){ qInp.style.height='auto'; qInp.style.height=Math.min(180, qInp.scrollHeight)+'px'; }
@@ -656,7 +657,7 @@
         answerChars:answer==null?undefined:String(answer).length,answer:answer==null?undefined:String(answer),
         error:error&&!stopped?String(error.message||error):undefined,run:!error&&run&&typeof run==='object'?run:undefined}});
   }
-  function conversation(owner, fresh, fn, {signal,onState,onDiagnostic}={}){
+  function adcConversation(owner, fresh, fn, {signal,onState,onDiagnostic}={}){
     const queuedAt=Date.now();
     onState?.('queued');onDiagnostic?.({kind:'adc',stage:'queued',at:new Date().toISOString()});
     const run=async()=>{
@@ -700,10 +701,11 @@
     lane=next.catch(()=>{});
     return next;
   }
+  function conversation(...args){return window.AiOpsModels?window.AiOpsModels.conversation(...args):adcConversation(...args);}
   async function send(q){
     if(!q || running) return;
     adcErr(''); toggleCaps(false);
-    running=true; stopRequested=false; updateButtons();
+    running=true; stopRequested=false; panelController=new AbortController(); updateButtons();
     userMsg(q);
     const msg0=botMsg();
     if(laneBusy && laneBusy!=='panel') msg0.wait('AI 月报正在使用对话通道，排队中…');
@@ -714,7 +716,7 @@
         let prompt=await buildPrompt(q), msg=msg0;
         for(let step=0; step<MAX_STEPS; step++){
           if(step) msg=botMsg();
-          if(!C.configured) msg.wait('首次提问，正在经原页面建立会话…');
+          if(!directModel()&&!C?.configured) msg.wait('首次提问，正在经原页面建立会话…');
           adcStatus(step?'正在分析工具结果…':'Dragon Claw 正在思考…','busy');
           let text;
           try{ text=await ask(prompt, t=>t ? msg.stream(streamView(t)) : msg.wait('会话已建立，Dragon Claw 正在思考…')); }
@@ -732,8 +734,8 @@
           if(stopRequested) break;
           prompt=observation(results, errors);
         }
-      });
-      adcStatus(stopRequested?'已停止':(window.ADCChat.environment||'ADC')+' · 就绪', stopRequested?'off':'ok');
+      },{signal:panelController.signal});
+      adcStatus(stopRequested?'已停止':(directModel()?'模型 API':window.ADCChat?.environment||'ADC')+' · 就绪', stopRequested?'off':'ok');
     }catch(err){
       if(msg0.el.isConnected && msg0.el.classList.contains('is-writing')) msg0.fail('请求失败：'+err.message);
       let extra='';
@@ -741,20 +743,21 @@
       if(!stopRequested) adcErr(err.message+extra);
       adcStatus(stopRequested?'已停止（服务端任务可能仍在运行）':'失败，可重试', stopRequested?'off':'err');
     }finally{
-      running=false; updateButtons(); qInp.focus();
+      running=false; panelController=null; updateButtons(); qInp.focus();
     }
   }
   function stop(){
     stopRequested=true;
+    panelController?.abort();
     pendingConfirms.forEach(f=>f(false));
-    try{ window.ADCChat?.stop(); }catch(e){}
+    // The active ADC conversation observes panelController; stopping a queued panel must not stop another owner.
   }
   box.addEventListener('click', e=>{ const c=e.target.closest('.aibar-chip'); if(c && !sendBtn.disabled && !running) send(c.dataset.q); });
 
-  if(onSite && hasClient){
-    ensureFrame();
+  {
+    if(onSite && hasClient)ensureFrame();
     $('#aiBarFrameToggle').onclick=()=>setFrameVisible(!frameVisible());
-    adcStatus((window.ADCChat.environment||'ADC')+' · '+(window.ADCChat.configured?'会话已就绪':'首次提问将自动建立会话'),'ok');
+    adcStatus((window.ADCChat?.environment||'ADC')+' · '+(window.ADCChat?.configured?'会话已就绪':'首次提问将自动建立会话'),'ok');
     sendBtn.onclick=()=>{
       if(running){ stop(); return; }
       const q=qInp.value.trim(); if(!q) return;
@@ -762,7 +765,8 @@
     };
     newSessBtn.onclick=async ()=>{
       const C=window.ADCChat;
-      if(C.busy || running || laneBusy) return;
+      if(C?.busy || running || laneBusy || window.AiOpsModels?.busy()) return;
+      if(directModel()){window.AiOpsModels.reset('panel');primed=false;box.innerHTML='';adcStatus('模型 API · 新会话就绪','ok');return;}
       adcErr(''); adcStatus('正在新建会话…','busy');
       try{
         const sid=await C.newSession(); primed=false; laneOwner='panel';
@@ -777,16 +781,15 @@
     qInp.addEventListener('keydown', e=>{
       if(e.key==='Enter' && !e.shiftKey && !e.isComposing && e.keyCode!==229){ e.preventDefault(); sendBtn.click(); }
     });
-  } else {
-    warn.innerHTML=!onSite
-      ? '当前地址不是 ADC 云端部署地址，助理仅可预览。部署到数字人云端（测试 netcareclaw-beta / 生产 netcareclaw.gde）后即可真实对话；右上角 '+ICON.database+' 可查看已开放的数据能力。'
-      : 'ADCChat 客户端初始化失败，请打开浏览器控制台查看报错（v1.4 只允许测试/生产两个数字人云端域名）。';
-    warn.hidden=false;
-    adcStatus(!onSite?'本地预览（非同源）':'客户端不可用','off');
-    $('#aiBarFrameToggle').onclick=()=>setFrameVisible(!frameVisible());
   }
+  function modelState(){
+    if(directModel()){warn.hidden=true;if(!running)adcStatus('模型 API · 就绪','ok');}
+    else if(!(onSite&&hasClient)){warn.textContent='ADC 当前不可用，可在开发者模式 → 工具 → AI 模型配置中连接模型 API。';warn.hidden=false;if(!running)adcStatus('请配置模型 API','off');}
+    updateButtons();
+  }
+  window.addEventListener('aiops-model-change',modelState);modelState();
   updateButtons();
   applyFrameTheme();
-  window.DragonClaw={ md, parseReply, send, stop, conversation, base, open:()=>setOpen(true), ready:()=>onSite && hasClient };
+  window.DragonClaw={ md, parseReply, send, stop, conversation, adcConversation, busy:()=>running||!!laneBusy||!!window.AiOpsModels?.busy(), base, open:()=>setOpen(true), ready:()=>(onSite && hasClient)||directModel() };
   window.__dragonClaw=window.DragonClaw;   // 便于调试与自动化测试
 })();

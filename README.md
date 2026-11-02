@@ -1,3 +1,7 @@
+## 独立模型 API
+
+月报工具栏「AI 模型」或「开发者模式 → 工具 → AI 模型配置」可新增、测试、加密保存和切换模型。支持 HTTP/HTTPS 的 OpenAI 兼容、Responses、Claude、Gemini、Ollama 及自定义 POST JSON 文本接口，继续支持 ADC 页面。配置存放在分配的应用库，API Key 和高级配置在服务端使用认证加密，读取时不回显。更新已有应用后需要执行 `db/upgrade.sql`（模拟基座执行 SQLite 对应脚本）；迁移时同时备份独立的加密密钥。详见 [模型配置与部署说明](docs/ai-models.md)。
+
 # Dragon-Platform-online · AiOps-Report
 
 [![Python Version](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)

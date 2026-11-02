@@ -129,14 +129,14 @@ function createClient(conv,signal,observe){
         prompt=clean(prompt);
         const started=Date.now(),entry=trace({kind:'ai',stage:'model',status:'running',system:clip(options.systemInstruction||''),messages:clip(prompt),tools:(tools||[]).map(tool=>tool.name)});
         try{
-            const text=String(await conv.ask(prompt)||'');
+            const text=String(await conv.ask(prompt,undefined,options)||'');
             signal?.throwIfAborted();
             let toolCalls=[];
             if(tools){const value=parseReplyDetailed(text).value;if(value&&typeof value.tool==='string'&&!value.type&&tools.some(tool=>tool.name===value.tool))toolCalls=[{id:'call_'+started,name:value.tool,args:value.args&&typeof value.args==='object'?value.args:{}}];}
-            Object.assign(entry,{ms:Date.now()-started,reply:clip(text),toolCalls:toolCalls.length?clip(toolCalls.map(call=>({name:call.name,args:call.args}))):'',...(window.ADCChat?.lastRun?{adcRun:clean(window.ADCChat.lastRun)}:{})});
+            Object.assign(entry,{ms:Date.now()-started,reply:clip(text),toolCalls:toolCalls.length?clip(toolCalls.map(call=>({name:call.name,args:call.args}))):'',...(conv.transport!=='model'&&window.ADCChat?.lastRun?{adcRun:clean(window.ADCChat.lastRun)}:{})});
             Object.assign(entry,{stage:'model_done',status:'success'});publish(entry);
             return {text:toolCalls.length?'':text,toolCalls};
-        }catch(error){Object.assign(entry,{stage:'failed',status:error.name==='AbortError'?'cancelled':'error',ms:Date.now()-started,error:error.message,...(window.ADCChat?.lastRun?{adcRun:clip(window.ADCChat.lastRun)}:{})});publish(entry);throw error;}
+        }catch(error){Object.assign(entry,{stage:'failed',status:error.name==='AbortError'?'cancelled':'error',ms:Date.now()-started,error:error.message,...(conv.transport!=='model'&&window.ADCChat?.lastRun?{adcRun:clip(window.ADCChat.lastRun)}:{})});publish(entry);throw error;}
     }};
 }
 

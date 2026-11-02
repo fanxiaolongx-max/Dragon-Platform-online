@@ -85,7 +85,7 @@ class ReleaseTests(unittest.TestCase):
                 value = archive.read('.env').decode()
                 self.assertIn('BUSINESS_DATASOURCE_NAME=assigned-business', value)
                 self.assertNotIn('private note', value)
-        for unsafe in ('API_KEY=fixture-secret', 'BASE_QUERY_URL=https://user:fixture-secret@base.fixture/query', 'BASE_QUERY_URL=https://base.fixture/query?token=fixture-secret', 'UNKNOWN_SETTING=fixture-secret'):
+        for unsafe in ('AI_MODEL_ENCRYPTION_KEY=fixture-secret', 'AI_MODEL_KEY_FILE=/private/key', 'API_KEY=fixture-secret', 'BASE_QUERY_URL=https://user:fixture-secret@base.fixture/query', 'BASE_QUERY_URL=https://base.fixture/query?token=fixture-secret', 'UNKNOWN_SETTING=fixture-secret'):
             self.put('.env', 'BUSINESS_DATASOURCE_NAME=assigned-business\n' + unsafe + '\n')
             with self.assertRaises(ValueError) as caught:
                 release.build(self.root, self.output)

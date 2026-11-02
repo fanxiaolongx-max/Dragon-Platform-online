@@ -94,6 +94,7 @@
         narratives.hidden=!stale||state.preview;narratives.textContent=t(`更新总结（${stale}）`,`Update summaries (${stale})`);
         $('[data-air=preview]').textContent=state.preview?t('返回编辑','Edit'):t('预览','Preview');
         $('[data-air=language]').textContent=state.lang==='en'?'中文':'EN';
+        const modelButton=document.querySelector('[data-ai-model-settings]');if(modelButton)modelButton.textContent=t('AI 模型','AI models');
         $('[data-air=save]').disabled=state.saving||!dirty();
         document.title=`${state.doc.name} - AI 月报`;
     }

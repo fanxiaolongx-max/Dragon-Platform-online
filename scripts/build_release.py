@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = {
+    "docs/ai-models.md", "app/routers/ai_models.py", "app/services/ai_models.py", "static/shared/model-gateway.js", "static/shared/model-settings.js", "static/shared/model-settings.css",
     ".env", "requirements.txt", "run.py", "AiOps-Report.version", "app/main.py",
     "static/shared/ai-diagnostics.js", "static/air/ai-backend.js", "static/air/trace.js", "static/air/tasks.js", "static/index.html", "static/air/default-template.json", "static/air/default-template.js", "static/air/default-logo.png", "db/init.sql", "db/init.sqlite.sql", "db/upgrade.sql", "db/upgrade.sqlite.sql",
 }
@@ -38,7 +39,7 @@ def included(name):
             or re.search(r"\.(pem|key|p12|pfx)$", basename)
             or re.match(r"(secrets?|credentials?|tokens?)(\.|$)", basename)):
         return False
-    return (name in TOP_FILES or path.parts[0] in {"app", "static"}
+    return (name == 'docs/ai-models.md' or name in TOP_FILES or path.parts[0] in {"app", "static"}
             or name in {"db/init.sql", "db/init.sqlite.sql", "db/upgrade.sql", "db/upgrade.sqlite.sql"})
 
 

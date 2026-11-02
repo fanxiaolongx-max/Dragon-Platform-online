@@ -102,6 +102,10 @@ class Settings(BaseSettings):
     # 业务数据库组名
     BUSINESS_DATASOURCE_NAME: str = ""
 
+    # Model encryption key is deployment-only: never include it in a release ZIP.
+    AI_MODEL_ENCRYPTION_KEY: str = ""
+    AI_MODEL_KEY_FILE: str = ""
+
     # ---- HTTP 客户端 ----
     HTTP_TIMEOUT: int = 15          # 调用基座 API 超时(秒)
     HTTP_VERIFY_SSL: bool = False  # 基座自签证书，关闭校验

@@ -11,6 +11,7 @@ from app.config import adapt_settings_from_headers, settings
 from app.core.logger import logger
 from app.core.exceptions import register_exception_handlers
 from app.routers import health, report, data_element, data_source, data_query, table_map, agent, air, environment, diagnostics, ops
+from app.routers import ai_models
 from app import db
 from app.db import close_client, detect_sql_dialect
 from app.utils.sql_contract import assert_host_contract
@@ -70,6 +71,7 @@ def create_app() -> FastAPI:
         return response
 
     # 注册路由（全部挂到根级 /api）
+    app.include_router(ai_models.router, prefix="/api")
     app.include_router(health.router, prefix="/api")
     app.include_router(report.router, prefix="/api")
     app.include_router(data_element.router, prefix="/api")

@@ -91,6 +91,21 @@ CREATE TABLE IF NOT EXISTS `t_report_config` (
   KEY `idx_config_block` (`report_id`, `block_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+
+-- AI model credentials: authenticated ciphertext only; key stays outside the application DB.
+CREATE TABLE IF NOT EXISTS `t_ai_model_config` (
+  `id` VARCHAR(32) NOT NULL,
+  `config_cipher` LONGTEXT NOT NULL,
+  `revision` VARCHAR(32) NOT NULL,
+  `updated_at` DATETIME DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+CREATE TABLE IF NOT EXISTS `t_ai_model_state` (
+  `id` VARCHAR(32) NOT NULL,
+  `mode` VARCHAR(16) NOT NULL DEFAULT 'adc',
+  `config_id` VARCHAR(32) NOT NULL DEFAULT '',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 -- ============================================================
 -- 初始数据
 -- ============================================================

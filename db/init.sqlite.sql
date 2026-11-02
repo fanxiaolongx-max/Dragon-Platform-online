@@ -121,3 +121,16 @@ VALUES
   ('incident_pie', '事件分布饼图', '图表数据', 'form', 'string', 0, NULL, '事件类别分布（饼图）', 'netcare', '', NULL),
   ('device_bar', '设备状态柱状图', '图表数据', 'form', 'string', 0, NULL, '设备状态分布（柱状图）', 'netcare', '', NULL),
   ('risk_completion_rate', '中高风险处置完成率', '风险指标', 'indicator', 'percent', 1, NULL, '中高风险任务的处置完成率', 'netcare', 'default_set', 'risk_completion_rate');
+
+-- AI model credentials (same columns as the base MySQL schema).
+CREATE TABLE IF NOT EXISTS t_ai_model_config (
+  id TEXT PRIMARY KEY NOT NULL,
+  config_cipher TEXT NOT NULL,
+  revision TEXT NOT NULL,
+  updated_at DATETIME DEFAULT NULL
+);
+CREATE TABLE IF NOT EXISTS t_ai_model_state (
+  id TEXT PRIMARY KEY NOT NULL,
+  mode TEXT NOT NULL DEFAULT 'adc',
+  config_id TEXT NOT NULL DEFAULT ''
+);
