@@ -99,3 +99,20 @@ test('fewer model round trips: page prefetch, batched tool calls, cached repeats
  assert.match(ops[0].title,/格子对话：ADC 往返 2 轮，工具 3 次/);assert.equal(ops[0].detail.prefetched,true);assert.equal(JSON.stringify(ops[0].detail.perRound.map(r=>r.tools)),JSON.stringify([['find_value','query'],[]]));
  assert.match(ops[1].title,/生成格子：ADC 往返 2 轮，工具 2 次（缓存命中 2 次）/);
 });
+
+
+test('layout requests release obsolete slot constraints in the browser AI backend',async()=>{
+ const c=runtime(),prompts=[];
+ const old='从业务库按报告月份读取稽查率。\n【尺寸约束】高 308px。\n【格子内部布局】chart 宽 100%；table 宽 100%。';
+ c.DragonClaw={ready:()=>true,conversation:async(_o,_f,fn)=>fn({reset:async()=>{},ask:async prompt=>{prompts.push(prompt);return JSON.stringify({prompt:'从业务库按报告月份读取稽查率，图表与表格左右并排。\n【格子内部布局】chart 宽 100%；table 宽 100%。'});}})};
+ const result=await c.API.post('/api/ai-report/cell/prompt',{month:'2026-10',prompt:old,chat:[{role:'ai',kind:'prompt',text:old},{role:'user',text:'表格和柱状图左右分布'}]});
+ assert.doesNotMatch(result.prompt,/【格子内部布局】/);assert.match(result.prompt,/左右并排/);
+ assert.match(prompts[0],/高 308px/);assert.doesNotMatch(prompts[0],/chart 宽 100%/);
+ assert.equal(c.AiReportModel.layoutRevision([{role:'user',text:'左右分布'},{role:'ai',kind:'prompt',text:result.prompt},{role:'user',text:'标题改为稽查率'}]),false);
+ assert.equal(c.AiReportModel.horizontalChartTable('图表与表格左右并排'),true);
+ assert.equal(c.AiReportModel.horizontalChartTable('指标卡左右并排。下面显示图表与表格。'),false);
+ const recipe=c.AiReportModel.normalizeRecipe({sources:[{id:'s1',kind:'sql',source:'app',sql:'SELECT total FROM fixture'}],compute:'function compute(input){return input.s1;}',render:'function render(result,kit){return "";}'});
+ assert.equal(recipe.sources[0].kind,'sql');
+ assert.equal(c.AiReportModel.imageUrl('air/logo.png'),'air/logo.png');
+ assert.equal(c.AiReportModel.normalize({reportKind:'history'}).reportKind,'history');
+});
