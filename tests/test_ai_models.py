@@ -12,7 +12,7 @@ from cryptography.fernet import Fernet
 
 from app import db
 from app.config import settings
-from app.core.exceptions import BusinessError
+from app.core.exceptions import BusinessError, DatabaseError
 from app.routers.ai_models import Generate, connected
 from app.services import ai_models as service
 from app.utils.sql_contract import assert_app_write, assert_read_query
@@ -197,3 +197,17 @@ class ModelsTests(unittest.IsolatedAsyncioTestCase):
         saved = await service.save(self.profile)
         self.connection.executescript((ROOT / 'db/upgrade.sqlite.sql').read_text())
         self.assertEqual(service.decode(await service.row_for(saved['id']))['api_key'], self.profile['api_key'])
+
+    async def test_old_installation_keeps_adc_only_when_both_new_tables_are_absent(self):
+        async def missing(sql, limit=100):
+            raise DatabaseError("no such table: " + ('t_ai_model_state' if 't_ai_model_state' in sql else 't_ai_model_config'))
+        with patch.object(db, 'query_app_schema', missing):
+            result = await service.listing()
+        self.assertEqual(result['mode'], 'adc')
+        self.assertTrue(result['migration_required'])
+        async def outage(sql, limit=100): raise DatabaseError('Base HTTP 503')
+        with patch.object(db, 'query_app_schema', outage), self.assertRaises(DatabaseError): await service.listing()
+        async def partial(sql, limit=100):
+            if 't_ai_model_config' in sql: raise DatabaseError('no such table: t_ai_model_config')
+            return [{'id': 'active', 'mode': 'model'}]
+        with patch.object(db, 'query_app_schema', partial), self.assertRaises(DatabaseError): await service.listing()

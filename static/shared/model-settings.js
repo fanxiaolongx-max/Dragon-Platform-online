@@ -20,7 +20,7 @@ function edit(item){
  status('');toggleCustom();
 }
 function toggleCustom(){host.querySelector('[data-custom]').hidden=field('protocol').value!=='custom';}
-async function load(){state=await window.AiOpsModels.refresh();renderList();}
+async function load(){state=await window.AiOpsModels.refresh();renderList();if(state.migration_required)status(t('独立模型尚未部署应用表，请执行更新包的 db/upgrade.sql（模拟基座执行 SQLite 对应脚本）；现有 ADC 仍可使用。','Model tables are not deployed. Apply the package DB upgrade scripts; existing ADC remains available.'),true);}
 function renderList(){
  if(!host)return;const list=host.querySelector('[data-list]');list.replaceChildren();
  const adc=document.createElement('button');adc.type='button';adc.textContent=(state.mode==='adc'?'● ':'○ ')+t('使用 ADC 数字人页面','Use ADC page');adc.onclick=()=>choose('adc');list.append(adc);

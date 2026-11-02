@@ -14,7 +14,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from app import db
 from app.config import settings
-from app.core.exceptions import BusinessError
+from app.core.exceptions import BusinessError, DatabaseError
 from app.utils.sql_helper import format_sql_value as lit
 
 PROTOCOLS = ('openai', 'responses', 'anthropic', 'gemini', 'ollama', 'custom')
@@ -75,7 +75,28 @@ async def row_for(config_id):
     return rows[0]
 
 
+def missing_table(error, table):
+    text = str(error).lower()
+    return table in text and any(word in text for word in ("doesn't exist", 'does not exist', 'no such table', '不存在', 'unknown table'))
+
+
 async def listing():
+    # An older installation can keep using ADC before applying the new feature's DDL.
+    # Only the proven absence of BOTH new tables permits that default; other DB errors remain errors.
+    try:
+        return await _listing()
+    except DatabaseError as error:
+        if not missing_table(error, 't_ai_model_config'): raise
+        try:
+            await db.query_app_schema("SELECT id FROM t_ai_model_state WHERE id='active'", limit=1)
+        except DatabaseError as state_error:
+            if missing_table(state_error, 't_ai_model_state'):
+                return {'mode': 'adc', 'config_id': '', 'items': [], 'protocols': list(PROTOCOLS), 'migration_required': True}
+            raise
+        raise
+
+
+async def _listing():
     rows = await db.query_app_schema('SELECT * FROM t_ai_model_config ORDER BY updated_at DESC, id', limit=200)
     selected = await db.query_app_schema("SELECT * FROM t_ai_model_state WHERE id='active'", limit=1)
     state = selected[0] if selected else {'mode': 'adc', 'config_id': ''}
