@@ -5,11 +5,18 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.5.11`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.6.0`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
 ---
+
+## 1.6.0 更新说明
+
+- **交互日志**：开发者页「工具 → 交互日志」可查看最近 N 条或 N 天内，开发者页与 AI 月报和外部的全部交互：每次基座数据库 API 请求（库、SQL、涉及的表、返回行数、HTTP 状态、错误、请求编号、来自哪个页面和接口）、每次 ADC 内嵌对话（提问、回答、耗时、是否经原页面发送、是否新建对话、失败原因）、业务表清单刷新。可按类型、成功 / 失败、关键字筛选，点开一条看完整记录，可导出 JSON。
+- **表失败标签**：业务表查询失败（源表直查、AI 月报取数等）会给这张表记失败次数；源表直查下拉在表名旁显示红色「失败 N」，和空表一样置灰排在最后；之后只要查成功一次就自动消除。网络、限流、鉴权、网关和业务数据源配置这类整体故障不记到单张表上。
+- **业务表清单自动刷新**：每次打开 AI 月报或开发者页，自动查一次 `GET /data/tables?source_db=netcare` 的最新表名，和上次对比；交互日志里醒目显示「新增 X 张，减少 Y 张」，展开可看具体是哪些表并带模块 / 类别 / 空表 / 失败 / 新增标签。源表直查下拉以最新清单为准优先展示，最新清单里新出现的表可直接查，最新清单里没有的表标「清单外」；AI 月报的 list_tables 工具也按最新清单返回，并把空表和失败的表排在后面。
+- 存储沿用既有 `t_report_config`（`report_id = 0`，section 为 `ops_log` / `ops_tbl_health` / `ops_tbl_snap`），不新增表、不需要 DBA 执行升级脚本；日志批量写入，保留 30 天后自动清理。
 
 ## 1.5.11 更新说明
 

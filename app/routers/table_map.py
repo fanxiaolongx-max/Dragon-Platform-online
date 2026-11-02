@@ -14,6 +14,7 @@ from fastapi import APIRouter, Query
 from app.config import settings
 from app.core.response import success, error
 from app.db import query_business, query_app_schema
+from app.services import ops_service
 
 router = APIRouter(prefix="/data/table-map", tags=["data-map"])
 
@@ -149,16 +150,34 @@ def list_all_db_tables():
     return success(data=data)
 
 
-@router.get("/lookup")
-def lookup_table(name: str = Query(..., description="源表名或落地表名，可带 schema 前缀")):
-    """解析单个表名 -> 所属模块 / 源表 / 落地表（映射外表回退全表目录直查）"""
+def _live_mod(table: str) -> dict:
+    """不在映射和内置目录、但在最新业务表清单（GET /data/tables）里的表。"""
+    return {
+        "name": "业务库最新表清单",
+        "remark": "业务库 netcare 最新表清单里新出现的表（内置目录还没有收录）",
+        "source_tables": [],
+        "landing_tables": [table],
+    }
+
+
+async def _resolve_any(name: str):
+    """映射 → 内置全表目录 → 最新业务表清单，依次解析表名。"""
     mod, landing, is_source = _resolve(name)
     if mod is None:
         base = _base_name(name)
         if base in _load_catalog():
-            mod, landing, is_source = _catalog_mod(base), base, False
-        else:
-            return error(code=404, message=f"映射中未找到表名：{name}")
+            return _catalog_mod(base), base, False
+        if base in await ops_service.live_tables():
+            return _live_mod(base), base, False
+    return mod, landing, is_source
+
+
+@router.get("/lookup")
+async def lookup_table(name: str = Query(..., description="源表名或落地表名，可带 schema 前缀")):
+    """解析单个表名 -> 所属模块 / 源表 / 落地表（映射外表回退全表目录、最新业务表清单直查）"""
+    mod, landing, is_source = await _resolve_any(name)
+    if mod is None:
+        return error(code=404, message=f"映射中未找到表名：{name}")
     return success(data=_lookup_payload(name, mod, landing, is_source))
 
 
@@ -205,13 +224,10 @@ async def query_by_table(
 
     映射外的表名回退全表目录（all_tables.json）：业务库 441 张表均可直查（空表返回 0 行）。
     """
-    mod, landing, is_source = _resolve(name)
+    mod, landing, is_source = await _resolve_any(name)
     if mod is None:
-        base = _base_name(name)
-        if base in _load_catalog():
-            mod, landing, is_source = _catalog_mod(base), base, False
-        else:
-            return error(code=404, message=f"映射中未找到表名：{name}")
+        ops_service.record("api", f"源表直查失败：映射、内置目录和最新业务表清单里都没有 {name}", "error", {"table": name})
+        return error(code=404, message=f"映射中未找到表名：{name}")
     if not landing:
         return error(code=400, message=f"模块[{mod['name']}]在业务库无落地表，无法直查。{mod.get('remark', '')}")
     table = re.sub(r"[^0-9A-Za-z_]", "", landing)

@@ -15,6 +15,13 @@ let executionFailure=null, htmlFallback=false;
 let diagnosticSlow=false;const diagnosticCalls=[];
 // 真实 ADC（v1.4）模拟：有 version；接口 newSession 不允许被调用，提问必须经内嵌原页面（viaPage）。
 let realAdcMode=false;
+// 交互日志：前端上报的条目、业务表清单刷新与源表直查失败标签
+let opsMode=false;const opsReports=[],opsQueries=[];
+const opsTables={tables:[{t:'brand_new_tbl',cn:'新出现的表'},{t:'risk_task_new',cn:'风险任务'},{t:'failing_tbl',cn:'失败的表'},{t:'empty_tbl',cn:'空表'}],
+  added:[{t:'brand_new_tbl',cn:'新出现的表'}],removed:[{t:'gone_tbl',cn:'下线的表'}],at:'2026-11-02 09:00:00',total:4,
+  health:{failing_tbl:{fails:2,lastFail:'2026-11-02 08:59:00',lastError:'HTTP 500'}}};
+const opsCatalog={tables:[{t:'risk_task_new',cn:'风险任务',mod:'风险',cate:'风险'},{t:'failing_tbl',cn:'失败的表',mod:'风险',cate:'风险'},
+  {t:'empty_tbl',cn:'空表',cate:'其他',empty:true},{t:'gone_tbl',cn:'下线的表',cate:'其他'},{t:'other_tbl',cn:'目录里的表',cate:'其他'}]};
 const realAdc = `window.__adcAsks=[];window.__adcNewSession=0;window.ADCChat={version:'1.4',configured:true,busy:false,environment:'Fixture ADC',
   newSession:async()=>{window.__adcNewSession++;throw new Error('newSession must not be used on the real ADC');},stop(){},
   ask:async(q,o={})=>{const doc=document.getElementById('aiBarFrame').contentDocument,box=doc&&doc.querySelector('textarea');
@@ -27,7 +34,7 @@ const server = http.createServer((req, res) => {
   const nested = url.startsWith(prefix);
   if (nested) url = '/' + url.slice(prefix.length);
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers','content-type,x-aiops-environment-revision');
+  res.setHeader('Access-Control-Allow-Headers','content-type,x-aiops-environment-revision,x-ops-page');
   res.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,DELETE,OPTIONS');
   if(req.method==='OPTIONS'){res.end();return;}
   if(url==='/api/diagnostics/database'){
@@ -35,6 +42,18 @@ const server = http.createServer((req, res) => {
     if(req.method==='GET'){send({configuration:{version:'test',queryUrlConfigured:true,businessDatasourceName:'assigned-business',runtime:{bootId:'fixture-boot',pid:123,reloadEnabled:false,password:'do-not-export'},configurationOrigins:{BUSINESS_DATASOURCE_NAME:{source:'process-environment',environmentPresentAtLoad:true,token:'do-not-export'}},apiKey:'do-not-export'},coverage:{readOnly:true},checks:[{id:'configuration',label:'配置',table:'fixture'},{id:'business-basic',label:'业务库',table:'fixture'},{id:'table-plain',label:'表查询',table:'fixture'}]});return;}
     let body='';req.on('data',c=>body+=c);req.on('end',()=>{const item=JSON.parse(body);diagnosticCalls.push(item);setTimeout(()=>send({...item,status:item.id==='business-basic'?'fail':'pass',ms:12,message:item.id==='business-basic'?'SQL rejected token=fixture-secret':'ok',datasourceMatch:{configuredBusinessName:'assigned-business',configuredNameListed:false,otherNamesExported:false,secret:'do-not-export'},upstream:[{httpStatus:item.id==='business-basic'?400:200,requestId:'00000000-0000-4000-8000-000000000000',message:'password=fixture-password',request:{requestId:'base-request-fixture',scope:'business',method:'POST',businessDatasourceName:'assigned-business',payloadKeys:['datasourceName','sql','Authorization'],Authorization:'do-not-export'}}],rows:[{private:'private-record'}]}),diagnosticSlow?500:0);});return;
   }
+  if(url.startsWith('/api/ops/')){
+    const send=data=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({code:0,data}));};
+    if(url==='/api/ops/logs'&&req.method==='POST'){let body='';req.on('data',c=>body+=c);req.on('end',()=>{const b=JSON.parse(body);opsReports.push(...b.entries.map(e=>({...e,header:req.headers['x-ops-page']})));send({accepted:b.entries.length});});return;}
+    if(url==='/api/ops/logs'){opsQueries.push(req.url);send({retainDays:30,logs:opsMode?[
+      {id:3,at:'2026-11-02 09:00:00',kind:'tables',status:'ok',page:'dev',title:'业务表清单刷新：共 4 张（上次 4 张），新增 1 张，减少 1 张',ms:80,detail:{total:4,previousTotal:4,added:opsTables.added,removed:opsTables.removed}},
+      {id:2,at:'2026-11-02 08:59:00',kind:'db',status:'error',page:'dev',route:'/api/data/table-map/data',title:'业务库查询 · failing_tbl 失败',ms:30,detail:{scope:'business',sql:'SELECT * FROM failing_tbl LIMIT 100',tables:['failing_tbl'],httpStatus:500,requestId:'req-1',error:'基座 API 请求失败'}},
+      {id:1,at:'2026-11-02 08:58:00',kind:'adc',status:'ok',page:'air',title:'ADC 对话 · AI 月报',ms:1500,detail:{owner:'air',viaPage:true,prompt:'问题',answer:'回答'}}]:[]});return;}
+    if(url==='/api/ops/tables/refresh'){opsQueries.push(req.url+' '+req.headers['x-ops-page']);send(opsMode?opsTables:{tables:[],added:[],removed:[],health:{}});return;}
+    if(url==='/api/ops/tables'){send({snapshot:opsMode?opsTables:null,health:opsMode?opsTables.health:{}});return;}
+  }
+  if(opsMode&&url==='/api/data/table-map'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({code:0,data:{modules:[]}}));return;}
+  if(opsMode&&url==='/api/data/table-map/all-tables'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({code:0,data:opsCatalog}));return;}
   if(url==='/api/environment'){
     const reply=()=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({code:0,data:{mode:nativeEnvironment?'remote':environmentMode,revision:environmentRevision,switchable:!nativeEnvironment,remoteReady:true}}));};
     if(req.method==='POST'){let body='';req.on('data',c=>body+=c);req.on('end',()=>{environmentMode=JSON.parse(body).mode;environmentRevision++;reply();});}else reply();return;
@@ -164,6 +183,14 @@ async function realAdcFlow(page,origin){
     assert(asks.every(a=>a.viaPage&&a.composer),'AI report requests are typed into the embedded ADC page');
     assert.deepEqual(asks.map(a=>a.newChats),[1,2],'Each AI report action opens one chat with the page\'s own 新建对话 button');
     assert(asks.every(a=>!a.fresh),'A page-created chat needs no fresh-task note');
+    await page.evaluate(()=>window.OpsLog.flush());
+    await page.waitForFunction(()=>true);
+    const pageAsks=()=>opsReports.filter(e=>e.kind==='adc'&&e.detail.viaPage===true);
+    for(let i=0;i<20&&pageAsks().length<2;i++)await page.waitForTimeout(100);
+    const adcLogs=pageAsks();
+    assert(opsReports.some(e=>e.kind==='adc'&&e.detail.owner==='panel'),'Assistant panel conversations are logged too');
+    assert.equal(adcLogs.length,2,'Every ADC request is reported to the interaction log');
+    assert(adcLogs.every(e=>e.status==='ok'&&e.detail.owner==='air'&&e.detail.viaPage===true&&e.detail.newChat===true&&e.detail.prompt&&e.detail.answer&&e.header==='air'));
     await page.evaluate(()=>window.DragonClaw.open());
     if(!(await page.locator('#aiBarFrameWrap').evaluate(el=>el.classList.contains('open'))))await page.locator('#aiBarFrameToggle').click();
     const look=()=>page.evaluate(()=>{const f=document.getElementById('aiBarFrame'),d=f.contentDocument;return {dark:d.documentElement.classList.contains('dark'),bg:getComputedStyle(d.body).backgroundColor,filter:f.style.filter};});
@@ -186,6 +213,47 @@ async function realAdcFlow(page,origin){
     await page.evaluate(()=>{const s=JSON.parse(localStorage.getItem('api_test_aibar'));delete s.frameInvert;localStorage.setItem('api_test_aibar',JSON.stringify(s));});
     console.log('PASS: real ADC requests go through the embedded page and its own 新建对话, never the newSession API; embedded page is light by default (native theme or inversion) and the 反色/原色 toggle always takes effect.');
   }finally{realAdcMode=false;}
+}
+async function opsFlow(page,origin){
+  opsMode=true;opsQueries.length=0;
+  try{
+    await page.goto(origin+'/dev.html');
+    await page.locator('#srcCb input').waitFor();
+    await page.waitForFunction(()=>window.OpsLog&&window.SRC_TBL_ID&&window.SRC_TBL_ID.brand_new_tbl);
+    if(await page.locator('#aiBar').isVisible()) await page.locator('#aiBarClose').click();
+    assert(opsQueries.includes('/api/ops/tables/refresh dev'),'Opening the developer page refreshes the business table list once');
+    await page.locator('#srcCb input').click();
+    const items=await page.locator('#srcCb li').evaluateAll(list=>list.map(li=>({v:li.dataset.v,text:li.textContent,dim:li.classList.contains('dim')})));
+    assert.deepEqual(items.map(i=>i.v),['risk_task_new','brand_new_tbl','gone_tbl','other_tbl','failing_tbl','empty_tbl'],
+      'Latest list first, tables missing from it next, failed and empty tables last (catalog order within each group)');
+    const item=v=>items.find(i=>i.v===v);
+    assert(item('failing_tbl').text.includes('失败 2')&&item('failing_tbl').dim,'Failed tables carry a failure count tag and are dimmed');
+    assert(item('brand_new_tbl').text.includes('新增')&&item('brand_new_tbl').text.includes('新出现的表'),'New tables from the latest list are tagged');
+    assert(item('gone_tbl').text.includes('清单外'),'Tables missing from the latest list are tagged');
+    assert(!item('risk_task_new').text.includes('失败'));
+    await page.keyboard.press('Escape');
+    await page.locator('#menuSearch').fill('交互日志');
+    await page.locator('#leftPanel .ep').filter({hasText:'交互日志'}).click();
+    await page.locator('#logCard').waitFor({state:'visible'});
+    await page.locator('#logList .log-it').first().waitFor();
+    assert.equal(await page.locator('#logList .log-it').count(),3);
+    const tables=page.locator('#logList .log-it.k-tables');
+    assert.equal(await tables.evaluate(el=>el.open),true,'The latest table refresh is expanded and highlighted');
+    assert.match(await tables.locator('.log-diff .add summary').textContent(),/新增 1 张表/);
+    assert.match(await tables.locator('.log-diff .del summary').textContent(),/减少 1 张表/);
+    assert.match(await tables.locator('.log-diff .add .log-tbl').textContent(),/brand_new_tbl.*新增/);
+    const failed=page.locator('#logList .log-it.k-db.s-error');
+    assert.match(await failed.locator(':scope > summary').textContent(),/失败/);
+    await failed.locator(':scope > summary').click();
+    assert.match(await failed.locator('pre').first().textContent(),/SELECT \* FROM failing_tbl/);
+    assert.match(await failed.locator('.log-body').textContent(),/失败 2/,'Tables in a log entry show their failure tag');
+    await page.locator('#logKind').selectOption('adc');
+    await page.waitForFunction(()=>true);
+    await page.locator('#logRange').selectOption('d:7');
+    await page.waitForTimeout(200);
+    assert(opsQueries.some(q=>q.includes('kind=adc')&&q.includes('days=7')&&q.includes('limit=1000')),'Filters are sent to the log API');
+    console.log('PASS: business table refresh on open, latest-list ordering with failure/new/missing tags, interaction log tool with highlighted table diff and filters.');
+  }finally{opsMode=false;}
 }
 async function environmentFlow(page,origin){
   monthMode=false;
@@ -568,6 +636,7 @@ async function assistantFeedback(page){
   await stopFlow(page,origin);
   await concurrencyFlow(page,origin);
   await realAdcFlow(page,origin);
+  await opsFlow(page,origin);
   assert.deepEqual(errors, []);
   console.log('PASS: restored geometry, four-edge dragging, both resize handles, dark buttons, iframe zoom, viewport resizing, visual viewport zoom, modal state/focus, root and prefixed API paths, sandboxed embedding.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => { await browser?.close(); server.close(); });

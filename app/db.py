@@ -57,6 +57,8 @@ def _base_find_table_url() -> str:
 
 _client: httpx.AsyncClient | None = None
 request_observer = ContextVar('base_request_observer', default=None)
+# 每次基座请求的最终结果（重试之后）通知这些监听器，供交互日志与表健康状态使用；监听器不能抛错也不能阻塞。
+request_listeners: list = []
 
 
 def _get_client() -> httpx.AsyncClient:
@@ -113,6 +115,30 @@ def _retry_after(response, attempt):
 
 
 async def _base_request(method, url, **kwargs):
+    started = time.monotonic()
+    try:
+        data = await _base_request_attempts(method, url, **kwargs)
+    except Exception as exc:
+        _notify(method, url, kwargs, None, exc, started)
+        raise
+    _notify(method, url, kwargs, data, None, started)
+    return data
+
+
+def _notify(method, url, kwargs, data, error, started):
+    if not request_listeners:
+        return
+    event = {'method': method, 'path': urlsplit(str(url)).path, 'payload': kwargs.get('json') or {},
+             'params': kwargs.get('params') or {}, 'data': data, 'error': error,
+             'ms': round((time.monotonic() - started) * 1000)}
+    for listener in list(request_listeners):
+        try:
+            listener(event)
+        except Exception as exc:
+            logger.debug(f"基座请求监听器出错：{exc}")
+
+
+async def _base_request_attempts(method, url, **kwargs):
     request_id = str(uuid.uuid4())
     for attempt in range(4):
         await _gate.wait()

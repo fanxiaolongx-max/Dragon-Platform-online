@@ -309,6 +309,43 @@ body.left-dragging{user-select:none;cursor:col-resize}
     .ctag.tg-oth{background:#e2e8f0;color:#334155}
     .ctag.te{background:#f1f5f9;color:#94a3b8;border:1px dashed #cbd5e1}
     .ctag.tg-hot{background:#fff7ed;color:#ea580c;font-weight:600}
+    .ctag.tg-fail{background:#fee2e2;color:#b91c1c;font-weight:600;border:1px solid #fca5a5}
+    .ctag.tg-new{background:#dcfce7;color:#15803d;font-weight:600}
+    .ctag.tg-out{background:#fff;color:#94a3b8;border:1px dashed #cbd5e1}
+    /* 交互日志 */
+    .log-bar select{height:34px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg-soft);padding:0 8px;font:inherit;font-size:12.5px;color:var(--text)}
+    .log-bar .pathin{flex:1;min-width:200px}
+    #logSummary{margin:8px 0}
+    #logList{display:flex;flex-direction:column;gap:6px}
+    .log-it{border:1px solid var(--border);border-left:3px solid #94a3b8;border-radius:var(--r-md);background:#fff}
+    .log-it.k-db{border-left-color:#0ea5e9}.log-it.k-adc{border-left-color:#8b5cf6}.log-it.k-api,.log-it.k-ui{border-left-color:#64748b}
+    .log-it.s-error{border-left-color:#dc2626;background:#fffafa}
+    .log-it.k-tables{border:1px solid #fcd34d;border-left:5px solid #f59e0b;background:#fffbeb}
+    .log-it.k-tables.s-error{border-color:#fca5a5;border-left-color:#dc2626;background:#fffafa}
+    .log-it>summary{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;list-style:none;font-size:12.5px;min-width:0}
+    .log-it>summary::-webkit-details-marker{display:none}
+    .log-it>summary .lt{color:var(--text-muted);font-family:var(--mono,monospace);font-size:11.5px;flex:none}
+    .log-it>summary .lb{flex:none;font-size:10.5px;padding:2px 6px;border-radius:4px;background:#f1f5f9;color:#475569}
+    .log-it>summary .lb.pg-dev{background:#eef2ff;color:#4338ca}.log-it>summary .lb.pg-air{background:#ecfeff;color:#0e7490}
+    .log-it>summary .lb.st-error{background:#fee2e2;color:#b91c1c;font-weight:600}
+    .log-it>summary .ln{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+    .log-it.k-tables>summary .ln{font-weight:700;color:#92400e;white-space:normal}
+    .log-it>summary .lm{flex:none;color:var(--text-muted);font-size:11.5px}
+    .log-body{padding:4px 12px 12px;font-size:12.5px;border-top:1px dashed var(--border)}
+    .log-body .kv{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px;margin:6px 0}
+    .log-body .kv b{font-weight:500;color:var(--text-muted)}
+    .log-body .kv span{word-break:break-all}
+    .log-body pre{margin:6px 0;padding:8px 10px;background:#0f172a;color:#e2e8f0;border-radius:6px;font-size:11.5px;max-height:320px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+    .log-body .err{color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:6px 10px;margin:6px 0;word-break:break-all}
+    .log-diff{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+    .log-diff details{border:1px solid var(--border);border-radius:6px;background:#fff}
+    .log-diff summary{padding:6px 10px;cursor:pointer;font-weight:600}
+    .log-diff .add summary{color:#15803d}.log-diff .del summary{color:#b91c1c}
+    .log-tbl{list-style:none;margin:0;padding:4px 10px 8px;display:flex;flex-direction:column;gap:3px}
+    .log-tbl li{font-size:12px;display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+    .log-tbl li code{font-size:12px}
+    .log-tbl .cn{color:var(--text-muted)}
+    .log-tbl .ctag,.log-it .ctag{display:inline-block;font-size:10px;line-height:1;padding:2.5px 6px;border-radius:4px;white-space:nowrap}
 
 /* Dragon Claw 助理浮窗样式见 shared/dragon-claw.css */
 /* 多选列下拉（「只显示这些列」） */
@@ -487,6 +524,7 @@ body.left-dragging{user-select:none;cursor:col-resize}
   </style>
   <link rel="stylesheet" href="shared/dragon-claw.css">
 <script src="shared/environment-client.js"></script>
+<script src="shared/ops-log.js" data-page="dev"></script>
 </head>
 <body>
   <header class="topbar">
@@ -584,7 +622,7 @@ body.left-dragging{user-select:none;cursor:col-resize}
         <div class="srcbar" style="margin-top:2px">
           <div id="srcCols" class="cbx"></div>
         </div>
-        <div class="hint" style="margin:0 0 10px">下拉已内置业务库 netcare 全量 441 张表：有数据的靠前，<b>空表置灰排在最后</b>（可查但无数据）；彩色标签 = 所属模块 / 数据类别，灰色备注 = 同事标注的中文名（可输入中文搜索）。
+        <div class="hint" style="margin:0 0 10px">下拉已内置业务库 netcare 全量 441 张表，并在每次打开页面时按业务库<b>最新表清单</b>（GET /data/tables）更新：最新清单里的表靠前，<b>新增</b>的表带绿色标签，最新清单里没有的表标「清单外」；<b>空表和最近查询失败的表（红色「失败 N」标签，查询成功后自动消除）置灰排在最后</b>；彩色标签 = 所属模块 / 数据类别，灰色备注 = 同事标注的中文名（可输入中文搜索）。
         输索引目录里的源表名也能命中对应落地表，任意表名可直接输入回车。
         「只显示这些列」点开为<b>多选</b>：列名搜索 / 全选 / 反选 / 清空，选择按表自动记忆到本地浏览器。
         过滤条件可加多条（AND）：列名 + 运算符 + 值；运算符 = != &gt; &lt; &gt;= &lt;= like not like in（like 值可带 %，in 用逗号分隔多值）。查询成功后可在「本模块其他落地表」切换器中换表重查——
@@ -594,6 +632,26 @@ body.left-dragging{user-select:none;cursor:col-resize}
       </div>
 
       <div class="card" id="diagnosticsCard" hidden></div>
+
+      <div class="card" id="logCard" hidden>
+        <div class="card-h"><span class="hicon" data-i="pulse"></span>交互日志 <span class="desc">开发者页和 AI 月报与外部的每次交互：基座数据库 API、ADC 内嵌对话、业务表清单刷新；存放在应用库，保留 30 天，点开一条看完整请求与返回</span></div>
+        <div class="srcbar log-bar">
+          <select id="logRange" aria-label="范围">
+            <option value="n:100">最近 100 条</option><option value="n:200" selected>最近 200 条</option><option value="n:500">最近 500 条</option><option value="n:1000">最近 1000 条</option>
+            <option value="d:1">最近 1 天</option><option value="d:3">最近 3 天</option><option value="d:7">最近 7 天</option><option value="d:30">最近 30 天</option>
+          </select>
+          <select id="logKind" aria-label="类型">
+            <option value="">全部类型</option><option value="db">数据库 API</option><option value="adc">ADC 对话</option><option value="tables">业务表清单刷新</option><option value="api">接口</option><option value="ui">前端</option>
+          </select>
+          <select id="logStatus" aria-label="结果"><option value="">全部结果</option><option value="error">仅失败</option><option value="ok">仅成功</option></select>
+          <input id="logKw" class="pathin" placeholder="关键字：表名、SQL、提问内容、请求编号（回车）" spellcheck="false">
+          <button class="btn btn-primary" id="logReload" type="button"><span data-i="refresh"></span>刷新</button>
+          <button class="btn btn-ghost" id="logRefreshTables" type="button">立即刷新业务表清单</button>
+          <button class="btn btn-ghost" id="logExport" type="button">导出 JSON</button>
+        </div>
+        <div id="logSummary" class="hint"></div>
+        <div id="logList"></div>
+      </div>
 
       <div class="card" id="auditCard" hidden>
         <div class="card-h"><span class="hicon" data-i="clipboard"></span>全表盘点 <span class="desc">项目内所有提到的表（源表/落地表/business_tables/数据元素绑定表）→ 逐表体检：中文备注 / 估算行数 / 前 20 行 / 粒度口径 / 归属核对</span></div>
@@ -1585,6 +1643,7 @@ const GROUPS = [
     { m:'★', p:'数据库测试一键套件', name:'Database diagnostic suite', desc:'只读测试 / Read-only · 一键导出脱敏日志', kind:'diagnostics', link:L.DIAGNOSTICS },
     { m:'★', p:'源表直查', name:'源表 → 落地表映射 + 数据查询', desc:'过滤条件 / 列选择 / 不限行数', kind:'src', link:L.BIZ },
     { m:'★', p:'全表盘点', name:'所有表盘点 / 单表体检 / 前20行', desc:'source+landing+biz+元素表 全量校验', kind:'audit', link:L.BIZ },
+    { m:'★', p:'交互日志', name:'开发者页 / AI 月报的外部交互记录', desc:'数据库 API · ADC 对话 · 业务表清单刷新 · 可回溯', kind:'log', link:L.APP_R },
     { m:'★', p:'自由请求', name:'任意 method / path / body', desc:'临时探索用', kind:'free', link:L.LOCAL },
     { m:'★', p:'AI 问答', name:'Dragon Claw AI 助理（可调用数据能力）', desc:'对话查数 / 统计 / 经确认后修改应用数据', kind:'adc', link:L.ADC },
   ]},
@@ -1926,6 +1985,8 @@ function selectEp(gi,ei,el){
     $('#freeCard').hidden = ep.kind!=='free';
     $('#auditCard').hidden = ep.kind!=='audit';
     $('#adcCard').hidden = ep.kind!=='adc';
+    $('#logCard').hidden = ep.kind!=='log';
+    if(ep.kind==='log'){ $('#statCard').hidden=true; $('#respCard').hidden=true; loadLogs(); }
     if(ep.kind==='src'){ $('#statCard').hidden=true; $('#respCard').hidden=true; $('#srcCustomTip').hidden=true; if(typeof curCustom!=='undefined') curCustom=null; }
     if(ep.kind==='custom'){ $('#statCard').hidden=true; $('#respCard').hidden=true; applyCustomQuery(ep.cid); }
     if(ep.kind==='audit'){ $('#statCard').hidden=true; $('#respCard').hidden=true; loadAudit(); }
@@ -1933,7 +1994,7 @@ function selectEp(gi,ei,el){
     if(ep.kind==='adc'){ $('#statCard').hidden=true; $('#respCard').hidden=true; if(window.__openAiBar) window.__openAiBar(); }
     return;
   }
-  $('#srcCard').hidden=true; $('#freeCard').hidden=true; $('#auditCard').hidden=true; $('#adcCard').hidden=true;
+  $('#srcCard').hidden=true; $('#freeCard').hidden=true; $('#auditCard').hidden=true; $('#adcCard').hidden=true; $('#logCard').hidden=true;
 
   $('#reqCard').hidden=false;
 
@@ -2832,8 +2893,9 @@ async function srcQuery(nameOverride, opts){
     const r=await fetch(url);
     const j=await r.json();
     const ms=Math.round(performance.now()-t0);
-    if(j.code!==0){ box.innerHTML='<div class="err-box">'+esc(j.message)+'</div>'; return; }
+    if(j.code!==0){ box.innerHTML='<div class="err-box">'+esc(j.message)+'</div>'; refreshTableHealth(); return; }
     const d=j.data;
+    clearTableFailure(d.resolved_table);
     cacheSave(ck, j, null);
     renderSrcData(d, ms, {fromCache:false, flts:flts, cols:cols, name});
     srcCurTable=d.resolved_table;
@@ -2867,8 +2929,8 @@ function bindLandSwitcher(tables, cur){
     options:tables.map(t=>({
       value:t,
       desc:(t===curTable?'当前':'业务库落地表'),
-      tags:tableTags(ALL_TBL_MAP[colBase(t)]),
-      dim:!!(ALL_TBL_MAP[colBase(t)]||{}).empty,
+      tags:tableAllTags(colBase(t)),
+      dim:!!(ALL_TBL_MAP[colBase(t)]||{}).empty||!!(tblFail(colBase(t))||{}).fails,
     })),
     onEnter:()=>{ const v=cb.value(); if(v && v!==curTable) srcQuery(v); },
     onChange:v=>{ if(v!==curTable) srcQuery(v); },
@@ -3067,9 +3129,40 @@ function bumpSrcQueryStat(tbl){
   saveSrcQueryStats(o);
 }
 
-/* 表下拉清单：内置业务库全量 441 表（目录顺序：有数据靠前 → 空表置灰靠后）；
-   索引目录源表名作为搜索别名命中对应落地表；中文备注参与搜索；
-   最近经常查的表（按查询频次）优先置顶展示。 */
+/* 表下拉清单：内置业务库全量 441 表 + 业务库最新表清单（每次打开页面刷新一次，见 shared/ops-log.js）；
+   索引目录源表名作为搜索别名命中对应落地表；中文备注参与搜索。排序：
+   最近经常查的表（不含失败的）置顶 → 最新表清单里的表 → 最新清单里没有的表（清单外）→ 空表与最近查询失败的表置灰在最后。 */
+let SRC_CAT=null;          // {map: 落地表 -> {mods, sources}, tables: 内置目录}
+let TBL_LIVE=null;         // 最新表清单快照 {at, tables:[{t,cn}], added, removed}
+let TBL_HEALTH={};         // 最近查询失败的表 {表名小写: {fails, lastFail, lastError}}
+const tblFail=t=>TBL_HEALTH[String(t||'').toLowerCase()]||null;
+function tableFailTag(t){
+  const f=tblFail(t); if(!f||!f.fails) return '';
+  return '<span class="ctag tg-fail" title="最近查询失败 '+f.fails+' 次 · 最近一次 '+esc(f.lastFail||'')+(f.lastError?' · '+esc(f.lastError):'')+'（查询成功后自动消除）">失败 '+f.fails+'</span>';
+}
+/* 任意表名的全部识别标签：失败次数 / 新增 / 清单外 + 模块 / 类别 / 空表 */
+function tableAllTags(t){
+  const key=String(t||'').toLowerCase(), e=ALL_TBL_MAP[t]||ALL_TBL_MAP[key];
+  const live=TBL_LIVE&&Array.isArray(TBL_LIVE.tables)?TBL_LIVE.tables:null;
+  let h=tableFailTag(t);
+  if(TBL_LIVE&&(TBL_LIVE.added||[]).some(x=>String(x.t).toLowerCase()===key)) h+='<span class="ctag tg-new" title="上次刷新业务表清单时新出现的表">新增</span>';
+  if(live&&!live.some(x=>String(x.t).toLowerCase()===key)) h+='<span class="ctag tg-out" title="业务库最新表清单（GET /data/tables）里没有这张表：可能已删除、改名，或是视图">清单外</span>';
+  return h+(e?tableTags(e):'');
+}
+function applyTableStatus(data){
+  if(!data) return;
+  if(Array.isArray(data.tables)) TBL_LIVE=data;
+  if(data.health&&typeof data.health==='object') TBL_HEALTH=data.health;
+  renderSrcOptions();
+}
+function refreshTableHealth(){
+  return fetch(base()+'/ops/tables').then(r=>r.json()).then(j=>{ if(j.code===0&&j.data) applyTableStatus({...(j.data.snapshot||{}),health:j.data.health||{}}); }).catch(()=>{});
+}
+function clearTableFailure(t){
+  const key=String(t||'').toLowerCase();
+  if(TBL_HEALTH[key]){ delete TBL_HEALTH[key]; renderSrcOptions(); }
+}
+addEventListener('ops:tables',e=>applyTableStatus(e.detail));
 async function loadSrcList(){
   try{
     const r1=await fetch(base()+'/data/table-map');
@@ -3088,40 +3181,142 @@ async function loadSrcList(){
     const j2=await r2.json();
     if(j2.code!==0 || !Array.isArray(j2.data.tables)) return;
     j2.data.tables.forEach(e=>{ ALL_TBL_MAP[e.t]=e; });
-    /* 表快查 ID：大分类（cate）一个字母（按 CATE_CLS 顺序 A/B/C…），类内编号 001 递增；
-       显示在下拉名字开头，且可直接输入 ID 搜索（大小写均可）。
-       ID 按原始目录顺序生成（稳定，不因频次排序而变）。 */
-    const CATE_LTRS={}; Object.keys(CATE_CLS).forEach((k,i)=>{ CATE_LTRS[k]=String.fromCharCode(65+i); });
-    const idCnt={}, idOf={};
-    j2.data.tables.forEach(e=>{
-      const L=CATE_LTRS[e.cate]||'Z';
-      idCnt[L]=(idCnt[L]||0)+1;
-      idOf[e.t]=L+String(idCnt[L]).padStart(3,'0');
-    });
-    window.SRC_TBL_ID=idOf;
-    /* 最近经常查的表优先展示：按 count 降序 → last 降序取 Top 30 置顶，其余按原顺序（有数据靠前、空表靠后） */
-    const stats=loadSrcQueryStats();
-    const allTables=j2.data.tables;
-    const hot=allTables.filter(e=>stats[e.t]&&stats[e.t].count>0)
-      .sort((a,b)=>(stats[b.t].count-stats[a.t].count)||(stats[b.t].last-stats[a.t].last))
-      .slice(0,30);
-    const hotSet=new Set(hot.map(e=>e.t));
-    const ordered=[...hot, ...allTables.filter(e=>!hotSet.has(e.t))];
-    srcCb.setOptions(ordered.map(e=>{
-      const id=idOf[e.t], extra=map[e.t], st=stats[e.t];
-      const hotTag=(st&&st.count>=3)?'<span class="ctag tg-hot" title="最近经常查询 · '+st.count+' 次">🔥'+st.count+'</span>':'';
-      return {
-        value:e.t,
-        label:id+' '+e.t+(e.cn?' — '+e.cn:'')+(e.empty?'（空表）':''),
-        desc:e.cn||'',
-        tags:'<span class="tid">'+id+'</span>'+hotTag+tableTags(e),
-        dim:!!e.empty,
-        kw:[id,id.toLowerCase(),extra?[...extra.sources].join(' '):'',e.mod||'',e.cate||''].filter(Boolean).join(' '),
-      };
-    }));
+    SRC_CAT={map, tables:j2.data.tables};
+    renderSrcOptions();
+    const latest=await window.OpsLog?.tables;
+    if(latest) applyTableStatus(latest);
   }catch(e){ /* 下拉只是增强，失败不影响手动输入 */ }
 }
+function renderSrcOptions(){
+  if(!SRC_CAT) return;
+  const map=SRC_CAT.map;
+  const live=TBL_LIVE&&Array.isArray(TBL_LIVE.tables)?TBL_LIVE.tables:null;
+  const liveSet=new Set((live||[]).map(t=>String(t.t).toLowerCase()));
+  const known=new Set(SRC_CAT.tables.map(e=>e.t.toLowerCase()));
+  // 最新表清单里新出现、内置目录没有收录的表：补成条目（类别「其他」，中文名用库里的表备注）
+  const extra=(live||[]).filter(t=>!known.has(String(t.t).toLowerCase())).map(t=>({t:t.t,cn:t.cn||'',mod:'',cate:'其他',live:true}));
+  extra.forEach(e=>{ ALL_TBL_MAP[e.t]=e; });
+  const allTables=[...SRC_CAT.tables, ...extra];
+  /* 表快查 ID：大分类（cate）一个字母（按 CATE_CLS 顺序 A/B/C…），类内编号 001 递增；
+     显示在下拉名字开头，且可直接输入 ID 搜索（大小写均可）。
+     ID 按原始目录顺序生成（稳定，不因排序而变；最新清单新增的表接在后面编号）。 */
+  const CATE_LTRS={}; Object.keys(CATE_CLS).forEach((k,i)=>{ CATE_LTRS[k]=String.fromCharCode(65+i); });
+  const idCnt={}, idOf={};
+  allTables.forEach(e=>{
+    const L=CATE_LTRS[e.cate]||'Z';
+    idCnt[L]=(idCnt[L]||0)+1;
+    idOf[e.t]=L+String(idCnt[L]).padStart(3,'0');
+  });
+  window.SRC_TBL_ID=idOf;
+  const failed=e=>!!(tblFail(e.t)||{}).fails;
+  const rank=e=>(failed(e)||e.empty)?3:(live&&!liveSet.has(e.t.toLowerCase()))?2:1;
+  /* 最近经常查的表优先展示：按 count 降序 → last 降序取 Top 30 置顶（失败的不置顶），其余按排序档位、档内保持目录顺序 */
+  const stats=loadSrcQueryStats();
+  const hot=allTables.filter(e=>stats[e.t]&&stats[e.t].count>0&&!failed(e))
+    .sort((a,b)=>(stats[b.t].count-stats[a.t].count)||(stats[b.t].last-stats[a.t].last))
+    .slice(0,30);
+  const hotSet=new Set(hot.map(e=>e.t));
+  const ordered=[...hot, ...allTables.filter(e=>!hotSet.has(e.t)).sort((a,b)=>rank(a)-rank(b))];
+  srcCb.setOptions(ordered.map(e=>{
+    const id=idOf[e.t], extra=map[e.t], st=stats[e.t], f=tblFail(e.t);
+    const hotTag=(st&&st.count>=3)?'<span class="ctag tg-hot" title="最近经常查询 · '+st.count+' 次">🔥'+st.count+'</span>':'';
+    return {
+      value:e.t,
+      label:id+' '+e.t+(e.cn?' — '+e.cn:'')+(e.empty?'（空表）':'')+(f&&f.fails?'（最近失败 '+f.fails+' 次）':''),
+      desc:e.cn||'',
+      tags:'<span class="tid">'+id+'</span>'+hotTag+tableAllTags(e.t),
+      dim:!!e.empty||!!(f&&f.fails),
+      kw:[id,id.toLowerCase(),extra?[...extra.sources].join(' '):'',e.mod||'',e.cate||'',f&&f.fails?'失败':'',e.live?'新增':''].filter(Boolean).join(' '),
+    };
+  }));
+}
 loadSrcList();
+
+/* ================= 交互日志 ================= */
+let LOGS=[];
+const LOG_KIND={db:'数据库 API',adc:'ADC 对话',tables:'业务表清单',api:'接口',ui:'前端'};
+const LOG_PAGE={dev:'开发者页',air:'AI 月报'};
+function logQuery(){
+  const [mode,val]=$('#logRange').value.split(':');
+  const p=new URLSearchParams();
+  if(mode==='d'){ p.set('days',val); p.set('limit','1000'); } else p.set('limit',val);
+  if($('#logKind').value) p.set('kind',$('#logKind').value);
+  if($('#logStatus').value) p.set('status',$('#logStatus').value);
+  const kw=$('#logKw').value.trim(); if(kw) p.set('q',kw);
+  return p;
+}
+async function loadLogs(){
+  const list=$('#logList'), sum=$('#logSummary');
+  sum.textContent='加载中…';
+  try{
+    window.OpsLog?.flush();
+    const r=await fetch(base()+'/ops/logs?'+logQuery().toString());
+    const j=await r.json();
+    if(j.code!==0) throw new Error(j.message||'读取日志失败');
+    LOGS=j.data.logs||[];
+    const fails=LOGS.filter(x=>x.status==='error').length;
+    const lastTables=LOGS.find(x=>x.kind==='tables');
+    sum.innerHTML='共 <b>'+LOGS.length+'</b> 条'+(fails?'，其中 <b style="color:#b91c1c">'+fails+' 条失败</b>':'')
+      +(lastTables?' · 最近一次业务表清单刷新：'+esc(lastTables.at)+'（'+esc(lastTables.title)+'）':'')
+      +' · 日志保留 '+(j.data.retainDays||30)+' 天';
+    list.innerHTML=LOGS.length?LOGS.map(logItemHTML).join(''):'<div class="hint" style="text-align:center;padding:16px">没有符合条件的日志</div>';
+  }catch(e){
+    sum.textContent=''; list.innerHTML='<div class="err-box">'+esc(e.message)+'</div>';
+  }
+}
+function logTableList(items){
+  return '<ul class="log-tbl">'+items.map(t=>'<li><code>'+esc(t.t)+'</code>'+tableAllTags(t.t)+(t.cn?'<span class="cn">'+esc(t.cn)+'</span>':'')+'</li>').join('')+'</ul>';
+}
+function logKV(rows){
+  const kept=rows.filter(([,v])=>v!==undefined&&v!==null&&v!==''&&!(Array.isArray(v)&&!v.length));
+  return kept.length?'<div class="kv">'+kept.map(([k,v])=>'<b>'+esc(k)+'</b><span>'+esc(Array.isArray(v)?v.join('、'):typeof v==='object'?JSON.stringify(v):String(v))+'</span>').join('')+'</div>':'';
+}
+function logItemHTML(x){
+  const d=x.detail||{};
+  let body='';
+  if(d.error) body+='<div class="err">'+esc(d.error)+'</div>';
+  if(x.kind==='tables'){
+    body+=logKV([['本次表数',d.total],['上次表数',d.first?'（首次记录）':d.previousTotal],['上次刷新',d.previousAt]]);
+    if(!d.first&&!d.error){
+      const added=d.added||[], removed=d.removed||[];
+      body+='<div class="log-diff"><details class="add"'+(added.length&&added.length<=30?' open':'')+'><summary>新增 '+added.length+' 张表</summary>'+(added.length?logTableList(added):'<div class="hint" style="padding:4px 10px 8px">无</div>')+'</details>'
+        +'<details class="del"'+(removed.length&&removed.length<=30?' open':'')+'><summary>减少 '+removed.length+' 张表</summary>'+(removed.length?logTableList(removed):'<div class="hint" style="padding:4px 10px 8px">无</div>')+'</details></div>';
+    }
+  }else if(x.kind==='db'){
+    body+=logKV([['接口',((d.method||'')+' '+(d.endpoint||'')).trim()],['库',{app:'应用库',business:'业务库',metadata:'基座元数据'}[d.scope]||d.scope],['数据源',d.datasource],['涉及表',d.tables],['返回行数',d.rows],['HTTP',d.httpStatus],['错误码',d.code],['请求编号',d.requestId],['参数',d.params]]);
+    if(d.tables&&d.tables.length) body+='<div style="margin:4px 0">'+d.tables.map(t=>'<code>'+esc(t)+'</code> '+tableAllTags(t)).join('　')+'</div>';
+    if(d.sql) body+='<pre>'+esc(d.sql)+'</pre>';
+  }else if(x.kind==='adc'){
+    body+=logKV([['来源',d.owner==='air'?'AI 月报':d.owner==='panel'?'助理浮窗':d.owner],['经内嵌原页面发送',d.viaPage===undefined?'':d.viaPage?'是':'否'],['新建对话',d.newChat?'是（点击原页面「新建对话」）':''],['提问字数',d.promptChars],['回答字数',d.answerChars]]);
+    if(d.prompt) body+='<div class="hint" style="margin:6px 0 0">提问</div><pre>'+esc(d.prompt)+'</pre>';
+    if(d.answer) body+='<div class="hint" style="margin:6px 0 0">回答</div><pre>'+esc(d.answer)+'</pre>';
+    if(d.run) body+='<div class="hint" style="margin:6px 0 0">ADC 流事件摘要</div><pre>'+esc(JSON.stringify(d.run,null,1))+'</pre>';
+  }else{
+    body+=logKV(Object.entries(d).filter(([k])=>k!=='error'));
+  }
+  body+='<details style="margin-top:6px"><summary class="hint" style="cursor:pointer">原始记录</summary><pre>'+esc(JSON.stringify(x,null,1))+'</pre></details>';
+  const ms=typeof x.ms==='number'?(x.ms>=1000?(x.ms/1000).toFixed(1)+' s':x.ms+' ms'):'';
+  return '<details class="log-it k-'+esc(x.kind)+' s-'+esc(x.status)+'"'+(x.kind==='tables'&&x===LOGS.find(y=>y.kind==='tables')?' open':'')+'><summary>'
+    +'<span class="lt">'+esc(x.at||'')+'</span>'
+    +(x.page?'<span class="lb pg-'+esc(x.page)+'">'+esc(LOG_PAGE[x.page]||x.page)+'</span>':'')
+    +'<span class="lb">'+esc(LOG_KIND[x.kind]||x.kind)+'</span>'
+    +(x.status==='error'?'<span class="lb st-error">失败</span>':'')
+    +'<span class="ln" title="'+esc(x.title||'')+'">'+esc(x.title||'')+(x.route?' <span class="hint" style="font-weight:400">· '+esc(x.route)+'</span>':'')+'</span>'
+    +'<span class="lm">'+ms+'</span></summary><div class="log-body">'+body+'</div></details>';
+}
+$('#logReload').onclick=loadLogs;
+['logRange','logKind','logStatus'].forEach(id=>$('#'+id).addEventListener('change',loadLogs));
+$('#logKw').addEventListener('keydown',e=>{ if(e.key==='Enter') loadLogs(); });
+$('#logRefreshTables').onclick=async function(){
+  this.disabled=true;
+  try{ const data=await window.OpsLog?.refreshTables(true); if(data) applyTableStatus(data); }finally{ this.disabled=false; }
+  loadLogs();
+};
+$('#logExport').onclick=()=>{
+  const blob=new Blob([JSON.stringify({exportedAt:new Date().toISOString(),query:Object.fromEntries(logQuery()),logs:LOGS},null,1)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='aiops-interaction-log-'+Date.now()+'.json';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
 
 /* ================= 左侧菜单搜索 ================= */
 $('#menuSearch').addEventListener('input', e=>{

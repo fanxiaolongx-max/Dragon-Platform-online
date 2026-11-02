@@ -646,6 +646,16 @@
     for(let i=0;i<30;i++){ await new Promise(r=>setTimeout(r,100)); signal?.throwIfAborted(); }
     diagnostic('new_chat',{status:'success',method:'page-click'});return true;
   }
+  /* 交互日志：每次经 ADC 的提问记一条（提问、回答、耗时、是否经内嵌原页面、出错原因），开发者页「交互日志」可回溯 */
+  function logAdc(owner,{started,text,answer,viaPage,newChat,note,error}){
+    const who=owner==='air'?'AI 月报':owner==='panel'?'助理浮窗':owner, stopped=error&&error.name==='AbortError';
+    const run=window.ADCChat?.lastRun;
+    window.OpsLog?.report({kind:'adc',status:error&&!stopped?'error':'ok',ms:Date.now()-started,
+      title:'ADC 对话 · '+who+(stopped?' · 已停止':error?' · 失败':''),
+      detail:{owner,viaPage,newChat,freshTaskNote:note,promptChars:text.length,prompt:text,
+        answerChars:answer==null?undefined:String(answer).length,answer:answer==null?undefined:String(answer),
+        error:error&&!stopped?String(error.message||error):undefined,run:!error&&run&&typeof run==='object'?run:undefined}});
+  }
   function conversation(owner, fresh, fn, {signal,onState,onDiagnostic}={}){
     const queuedAt=Date.now();
     onState?.('queued');onDiagnostic?.({kind:'adc',stage:'queued',at:new Date().toISOString()});
@@ -668,7 +678,7 @@
         if(!C.configured){ return true; }        // 还没有会话：首问经原页面新建
         if(realAdc()){
           if(await pageNewChat(signal)){ pendingNote=false; pageNext=true; return true; }
-          pendingNote=true;diagnostic('new_chat_fallback',{reason:'independent-task-note'}); return false;        // 找不到「新建对话」：留在当前会话，提问前声明是新任务
+          pendingNote=true;diagnostic('new_chat_fallback',{reason:'independent-task-note'});window.OpsLog?.report({kind:'adc',status:'error',title:'ADC 新建对话失败：内嵌原页面没有找到「新建对话」按钮，沿用当前对话',detail:{owner}}); return false;        // 找不到「新建对话」：留在当前会话，提问前声明是新任务
         }
         try{ await (window.AiReportTasks?.wait(C.newSession(),signal)||C.newSession()); signal?.throwIfAborted();pendingNote=false; return true; }
         catch(e){ if(e.name==='AbortError')throw e;pendingNote=true;diagnostic('new_chat_fallback',{error:e.message}); return false; }
@@ -677,7 +687,10 @@
       if(fresh || (laneOwner && laneOwner!==owner)){ await reset(); isNew=true; }
       laneOwner=owner;
       // AI 月报在真实 ADC 上每次都经内嵌原页面发送，和手动提问同一条路，打开「原 ADC 聊天页」就能看到全过程。
-      const ask=async(prompt, onUpdate)=>{ const text=(pendingNote&&!used?FRESH_NOTE:'')+prompt; used=true; pendingNote=false; signal?.throwIfAborted();const protocol=owner==='air'?'application-json-v1':undefined;const viaPage=realAdc()&&(owner==='air'||pageNext);pageNext=false;return window.AiReportTasks?.wait(rawAsk(text,onUpdate,signal,protocol,viaPage),signal)||rawAsk(text,onUpdate,signal,protocol,viaPage); };
+      const ask=async(prompt, onUpdate)=>{ const note=pendingNote&&!used;const text=(note?FRESH_NOTE:'')+prompt; used=true; pendingNote=false; signal?.throwIfAborted();const protocol=owner==='air'?'application-json-v1':undefined;const newChat=pageNext;const viaPage=realAdc()&&(owner==='air'||pageNext);pageNext=false;
+        const started=Date.now(),pending=rawAsk(text,onUpdate,signal,protocol,viaPage);
+        try{ const answer=await (window.AiReportTasks?.wait(pending,signal)||pending); logAdc(owner,{started,text,answer,viaPage,newChat,note}); return answer; }
+        catch(e){ logAdc(owner,{started,text,viaPage,newChat,note,error:e}); throw e; } };
       // 同一次操作里的独立子任务（如冲突检查）：真实 ADC 上留在同一个对话里并声明是新任务，避免一次操作开出多个对话。
       const fork=async()=>{ used=false; if(realAdc()&&C.configured){ pendingNote=true;diagnostic('new_chat_fallback',{reason:'subtask-boundary-note'}); return; } await reset(); };
       signal?.throwIfAborted();return await fn({ask, reset:fork, isNew}); }

@@ -10,10 +10,11 @@ from fastapi.responses import FileResponse, HTMLResponse
 from app.config import adapt_settings_from_headers, settings
 from app.core.logger import logger
 from app.core.exceptions import register_exception_handlers
-from app.routers import health, report, data_element, data_source, data_query, table_map, agent, air, environment, diagnostics
+from app.routers import health, report, data_element, data_source, data_query, table_map, agent, air, environment, diagnostics, ops
 from app import db
 from app.db import close_client, detect_sql_dialect
 from app.utils.sql_contract import assert_host_contract
+from app.services import ops_service
 
 logging.getLogger("uvicorn").setLevel(logging.INFO)
 
@@ -54,7 +55,15 @@ def create_app() -> FastAPI:
         if switched:
             db._dialect_checked = False
             logger.info(f"根据请求头域名自动对齐线上基座环境：{switched} (APP_SCHEMA={settings.APP_SCHEMA[:8]}...)")
-        response = await call_next(request)
+        # 交互日志：记下这次请求来自哪个页面、哪个接口
+        token = ops_service.request_context.set({
+            "page": ops_service.page_of(request.headers.get("referer", ""), request.headers.get("x-ops-page", "")),
+            "route": request.url.path[-200:],
+        })
+        try:
+            response = await call_next(request)
+        finally:
+            ops_service.request_context.reset(token)
         path = request.url.path
         if request.method == "GET" and (path.endswith(("/", ".html", ".js", ".css")) or path in ("/dev", "/api-test")):
             response.headers.setdefault("Cache-Control", "no-cache")
@@ -71,6 +80,8 @@ def create_app() -> FastAPI:
     app.include_router(air.router, prefix="/api")
     app.include_router(environment.router, prefix="/api")
     app.include_router(diagnostics.router, prefix="/api")
+    app.include_router(ops.router, prefix="/api")
+    ops_service.install()
 
     # 挂载静态文件目录（基座要求 static/ 可访问）
     if os.path.isdir(STATIC_DIR):
@@ -99,6 +110,10 @@ def create_app() -> FastAPI:
 
     @app.on_event("shutdown")
     async def shutdown_event():
+        try:
+            await ops_service.flush()
+        except Exception:
+            pass
         await close_client()
         logger.info(f"{settings.APP_NAME} 已关闭，基座客户端连接已释放")
 

@@ -366,15 +366,41 @@ async def _list_tables(args: dict) -> dict:
     if source == "app":
         rows = [{"table": name, "comment": meta["title"]} for name, meta in APP_TABLES.items()]
     elif source == "netcare":
-        tables = await DataService().list_tables("netcare")
-        rows = [{"table": t["table_name"], "comment": t.get("table_comment") or ""} for t in tables]
+        rows = await _business_tables()
     else:
         raise _fail("source 只能是 app 或 netcare")
     if keyword:
-        rows = [r for r in rows if keyword in r["table"].lower() or keyword in r["comment"].lower()]
+        rows = [r for r in rows if keyword in r["table"].lower() or keyword in r["comment"].lower()
+                or keyword in str(r.get("module", "")).lower() or keyword in str(r.get("category", "")).lower()]
     total = len(rows)
     rows = rows[:150]
-    return {"source": source, "total": total, "rows": rows, "truncated": total > len(rows)}
+    result = {"source": source, "total": total, "rows": rows, "truncated": total > len(rows)}
+    if source == "netcare":
+        result["note"] = "按业务库最新表清单排列：可用的表在前；空表（empty）和最近查询失败的表（failed=失败次数，lastError=最近错误）排在后面，尽量不要用。"
+    return result
+
+
+async def _business_tables() -> list[dict]:
+    """业务库最新表清单（实时查询），带内置目录的模块 / 类别 / 空表标记和最近查询失败次数；空表和失败的表排后面。"""
+    from app.routers.table_map import _load_catalog
+    from app.services import ops_service
+    tables = await DataService().list_tables("netcare")
+    catalog, health = _load_catalog(), await ops_service.table_health()
+    rows = []
+    for t in tables:
+        name = t["table_name"]
+        meta, fail = catalog.get(name.lower()) or {}, health.get(name.lower()) or {}
+        row = {"table": name, "comment": t.get("table_comment") or meta.get("cn") or ""}
+        if meta.get("mod"):
+            row["module"] = meta["mod"]
+        if meta.get("cate"):
+            row["category"] = meta["cate"]
+        if meta.get("empty"):
+            row["empty"] = True
+        if fail.get("fails"):
+            row.update(failed=fail["fails"], lastError=fail.get("lastError", ""))
+        rows.append(row)
+    return sorted(rows, key=lambda r: bool(r.get("empty") or r.get("failed")))
 
 
 async def _describe_table(args: dict) -> dict:
