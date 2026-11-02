@@ -14,11 +14,11 @@ router = APIRouter(prefix="/ops", tags=["ops"])
 async def list_logs(
     limit: int = Query(200, ge=1, le=1000, description="最近多少条"),
     days: float = Query(0, ge=0, le=ops_service.RETAIN_DAYS, description="最近多少天，0 = 不限（日志保留 30 天）"),
-    kind: str = Query("", description="db / adc / tables / api / ui，空 = 全部"),
+    kind: str = Query("", description="db / adc / model / ai / tables / api / ui，空 = 全部"),
     status: str = Query("", description="ok / error，空 = 全部"),
     q: str = Query("", description="关键字（表名、SQL、提问内容、请求编号等）"),
 ):
-    """开发者页与 AI 月报的外部交互日志（基座 API 请求、ADC 对话、业务表清单刷新），新的在前"""
+    """开发者页与 AI 月报的外部交互日志（基座 API 请求、ADC 对话、模型 API 对话、AI 操作汇总、业务表清单刷新），新的在前"""
     return success(data=await ops_service.list_logs(limit, days, kind, status, q))
 
 

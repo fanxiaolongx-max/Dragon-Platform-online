@@ -50,6 +50,14 @@ class OpsTests(unittest.IsolatedAsyncioTestCase):
         body = json.loads(request.content)
         sql = body['sql']
         if 'datasourceName' in body:
+            if 'information_schema.COLUMNS' in sql:
+                return httpx.Response(200, json={'code': 0, 'data': {'rows': [
+                    {'COLUMN_NAME': 'region_name_cn', 'DATA_TYPE': 'varchar', 'COLUMN_COMMENT': '地区部'},
+                    {'COLUMN_NAME': 'rep_office_name_cn', 'DATA_TYPE': 'varchar', 'COLUMN_COMMENT': '代表处'},
+                    {'COLUMN_NAME': 'cnt', 'DATA_TYPE': 'int', 'COLUMN_COMMENT': ''}]}})
+            if 'UNION ALL' in sql:
+                self.union_sql = sql
+                return httpx.Response(200, json={'code': 0, 'data': {'rows': [{'col': 'rep_office_name_cn', 'val': '埃及代表处', 'n': 12}]}})
             if 'information_schema.TABLES' in sql:
                 return httpx.Response(200, json={'code': 0, 'data': {'rows': [{'TABLE_NAME': t, 'TABLE_COMMENT': c} for t, c in self.tables]}})
             for table, status in self.status.items():
@@ -167,3 +175,42 @@ class OpsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(next(log for log in logs if log['kind'] == 'db' and 'information_schema' in log['detail']['sql'])['page'], 'air')
         self.assertEqual(by_kind['adc']['page'], 'air')
         self.assertEqual((by_kind['tables']['page'], by_kind['tables']['title']), ('air', '业务表清单首次记录：共 2 张表'))
+
+    async def test_suggest_tables_and_find_value_save_model_round_trips(self):
+        self.tables = [('nc_eos_risk_product_version_dws', 'EOS风险产品版本统计'), ('op_ioc_rectify_check_d_dwd', '整改明细'), ('nc_eos_other', 'EOS 其他')]
+        suggested = (await agent_service.execute('suggest_tables', {'text': '埃及代表处 EOS 风险产品版本每月统计'}))['result']
+        self.assertEqual([t['table'] for t in suggested['tables']], ['nc_eos_risk_product_version_dws', 'nc_eos_other'])
+        self.assertIn('风险', suggested['tables'][0]['matched'])
+        self.assertEqual(suggested['columns'][0]['table'], 'nc_eos_risk_product_version_dws')
+        self.assertEqual(len(suggested['columns']), 1, 'a much weaker second match gets no column lookup')
+        named = (await agent_service.execute('suggest_tables', {'text': '数据来源 op_ioc_rectify_check_d_dwd，按月'}))['result']
+        self.assertEqual(named['tables'][0]['table'], 'op_ioc_rectify_check_d_dwd')
+        self.assertEqual((await agent_service.execute('suggest_tables', {'text': '你好'}))['result']['tables'], [])
+
+        found = (await agent_service.execute('find_value', {'source': 'netcare', 'table': 'nc_eos_risk_product_version_dws', 'keyword': "埃及'; DROP"}))['result']
+        self.assertEqual(found['matches'], [{'column': 'rep_office_name_cn', 'value': '埃及代表处', 'rows': 12}])
+        self.assertEqual(found['searched_columns'], ['region_name_cn', 'rep_office_name_cn'], 'only text columns are searched')
+        self.assertIn("LIKE '%埃及 DROP%'", self.union_sql)
+        with self.assertRaises(Exception):
+            await agent_service.execute('find_value', {'source': 'netcare', 'table': 'nc_eos_risk_product_version_dws', 'keyword': '埃及', 'columns': ['cnt']})
+
+    async def test_client_kinds_time_and_a_bad_row_does_not_drop_its_batch(self):
+        accepted = ops_service.record_client([
+            {'kind': 'model', 'title': '模型 API 对话', 'clientAt': '2020-01-01T00:00:00Z'},
+            {'kind': 'ai', 'title': 'AI 月报 · 格子对话', 'detail': {'rounds': 3}},
+            {'kind': 'weird', 'title': 'BAD row'}], 'air')
+        self.assertEqual(accepted, 3)
+        original = db.execute_app_schema
+
+        async def picky(sql):
+            if 'BAD row' in sql:
+                raise db.DatabaseError('Incorrect string value')
+            return await original(sql)
+        ops_service.db.execute_app_schema = picky
+        try:
+            await ops_service.flush()
+        finally:
+            ops_service.db.execute_app_schema = original
+        stored = self.stored('ops_log')
+        self.assertEqual([e['kind'] for e in stored], ['model', 'ai'])
+        self.assertNotEqual(stored[0]['at'][:4], '2020', 'implausible browser times fall back to the server time')

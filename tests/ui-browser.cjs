@@ -48,7 +48,9 @@ const server = http.createServer((req, res) => {
     if(url==='/api/ops/logs'){opsQueries.push(req.url);send({retainDays:30,logs:opsMode?[
       {id:3,at:'2026-11-02 09:00:00',kind:'tables',status:'ok',page:'dev',title:'业务表清单刷新：共 4 张（上次 4 张），新增 1 张，减少 1 张',ms:80,detail:{total:4,previousTotal:4,added:opsTables.added,removed:opsTables.removed}},
       {id:2,at:'2026-11-02 08:59:00',kind:'db',status:'error',page:'dev',route:'/api/data/table-map/data',title:'业务库查询 · failing_tbl 失败',ms:30,detail:{scope:'business',sql:'SELECT * FROM failing_tbl LIMIT 100',tables:['failing_tbl'],httpStatus:500,requestId:'req-1',error:'基座 API 请求失败'}},
-      {id:1,at:'2026-11-02 08:58:00',kind:'adc',status:'ok',page:'air',title:'ADC 对话 · AI 月报',ms:1500,detail:{owner:'air',viaPage:true,prompt:'问题',answer:'回答'}}]:[]});return;}
+      {id:1,at:'2026-11-02 08:58:00',kind:'adc',status:'ok',page:'air',title:'ADC 对话 · AI 月报',ms:1500,detail:{owner:'air',viaPage:true,prompt:'问题',answer:'回答'}},
+      {id:0,at:'2026-11-02 08:57:00',kind:'ai',status:'ok',page:'air',title:'AI 月报 · 格子对话：ADC 往返 2 轮，工具 3 次（缓存命中 1 次），用时 40.0 秒',ms:40000,detail:{operation:'/cell/chat',transport:'adc',rounds:2,modelMs:39000,toolCalls:3,toolMs:300,cacheHits:1,prefetched:true,replyType:'ready',perRound:[{ms:30000,tools:['find_value','query'],promptChars:5000,answerChars:200},{ms:9000,tools:[],promptChars:800,answerChars:90}],tools:[{name:'suggest_tables',ms:120,prefetch:true},{name:'find_value',ms:150},{name:'query',ms:0,cached:true}]}},
+      {id:-1,at:'2026-11-02 08:56:00',kind:'model',status:'error',page:'air',title:'模型 API 对话 · AI 月报 · glm-52 · 失败',ms:75000,detail:{owner:'air',model:'glm-52',protocol:'openai',turns:3,prompt:'模型提问',error:'模型接口失败'}}]:[]});return;}
     if(url==='/api/ops/tables/refresh'){opsQueries.push(req.url+' '+req.headers['x-ops-page']);send(opsMode?opsTables:{tables:[],added:[],removed:[],health:{}});return;}
     if(url==='/api/ops/tables'){send({snapshot:opsMode?opsTables:null,health:opsMode?opsTables.health:{}});return;}
   }
@@ -236,7 +238,14 @@ async function opsFlow(page,origin){
     await page.locator('#leftPanel .ep').filter({hasText:'交互日志'}).click();
     await page.locator('#logCard').waitFor({state:'visible'});
     await page.locator('#logList .log-it').first().waitFor();
-    assert.equal(await page.locator('#logList .log-it').count(),3);
+    assert.equal(await page.locator('#logList .log-it').count(),5);
+    const op=page.locator('#logList .log-it.k-ai');
+    await op.locator(':scope > summary').click();
+    assert.deepEqual(await op.locator('.log-rounds tbody tr').evaluateAll(rows=>rows.map(r=>r.cells[2].textContent)),['find_value、query','（给出回复）'],'Each model round lists the tools it asked for');
+    assert.match(await op.locator('.log-tools').textContent(),/suggest_tables（预取）.*query 缓存/);
+    const model=page.locator('#logList .log-it.k-model.s-error');
+    await model.locator(':scope > summary').click();
+    assert.match(await model.locator('.log-body').textContent(),/模型接口失败[\s\S]*glm-52[\s\S]*模型提问/);
     const tables=page.locator('#logList .log-it.k-tables');
     assert.equal(await tables.evaluate(el=>el.open),true,'The latest table refresh is expanded and highlighted');
     assert.match(await tables.locator('.log-diff .add summary').textContent(),/新增 1 张表/);

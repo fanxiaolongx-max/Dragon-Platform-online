@@ -10,7 +10,7 @@
 (function(){
 'use strict';
 const M=AiReportModel;
-const MAX_TOOL_STEPS=8, TOOL_RESULT_CHARS=14000;
+const MAX_TOOL_STEPS=8, TOOL_RESULT_CHARS=14000, MAX_PARALLEL_TOOLS=4;
 const apiBase=()=>{ const p=location.pathname; return p.slice(0,p.lastIndexOf('/')+1)+'api'; };
 const fail=(status,message)=>Object.assign(new Error(message),{status});
 const clean=value=>window.AiOpsDiagnostics.safe(value);
@@ -66,7 +66,7 @@ function monthValues(month,offset=0){
 }
 const resolveSql=(sql,month,offset=0)=>{const values=monthValues(month,offset);return String(sql||'').replace(/\{\{\s*(\w+)\s*\}\}/g,(match,key)=>key in values?values[key]:match);};
 
-const DATA_TOOLS_GUIDE='可用工具：list_tables（列出业务库 netcare 或应用库 app 的表，可按关键字过滤表名和中文备注）、describe_table（某张表的字段、类型和中文备注）、query（执行一条只读 SELECT，最多返回 50 行，用来确认数据样子、取值和时间字段格式；SQL 里可以用 {{month}} 等月份占位符）、list_report_cells（这份月报的章节和格子，做导航、总览或引用其他格子时用）。运营数据都在业务库 netcare（400+ 张表：工单、整改、风险、EOS 退网等）；找数据时先 list_tables 按关键字搜（中文备注也能搜），再 describe_table 看字段，必要时 query 看样本，确认时间字段的格式（如 2026-09、202609 或日期时间），不要凭空猜表名、列名或数字。用户说的名称常和实际表名不一样，按含义和中文备注匹配。';
+const DATA_TOOLS_GUIDE='可用工具：suggest_tables（按一段问题文字推荐最相关的业务表，附前两张的字段）、list_tables（列出业务库 netcare 或应用库 app 的表，可按关键字过滤表名和中文备注）、describe_table（某张表的字段、类型和中文备注）、find_value（在一张表的地区、代表处、国家、运营商、产品等文字列里查找包含某个值的列和取值，如“埃及”在哪一列）、query（执行一条只读 SELECT，最多返回 50 行，用来确认数据样子、取值和时间字段格式；SQL 里可以用 {{month}} 等月份占位符）、list_report_cells（这份月报的章节和格子，只在做导航、总览或引用其他格子时用）。运营数据都在业务库 netcare（400+ 张表：工单、整改、风险、EOS 退网等）。每一轮往返都很慢，要尽量少：任务内容里已经给出的【预先查到的资料】（候选表、字段、试跑过的 SQL）直接使用，不要再重复 describe_table 或 list_tables；还缺数据时，把互不依赖的查询一次发出（如同时 describe 两张候选表、同时 find_value 和试跑 SQL）；要找某个名称（地区、代表处、运营商等）在哪一列、写法是什么，用 find_value 一次查完，不要逐列 GROUP BY 摸索；SQL 尽量一次写完整（筛选、分组、聚合都在一条里），确认时间字段的格式（如 2026-09、202609 或日期时间）。不要凭空猜表名、列名或数字。用户说的名称常和实际表名不一样，按含义和中文备注匹配。';
 const SQL_RECIPE_GUIDE=`配方格式：
 - sources：数组，每项是以下之一：
   {id:'s1', kind:'sql', label:'这份数据的中文说明', source:'netcare' 或 'app', sql:'SELECT …', monthOffset:0}
@@ -80,17 +80,93 @@ const TOOLS=[
     {name:'list_tables',description:'列出数据库里的表（表名和中文备注），可按关键字过滤',parameters:{type:'object',properties:{source:{type:'string',description:'netcare（业务库，默认）或 app（应用库）'},keyword:{type:'string',description:'表名或中文备注里的关键字'}}}},
     {name:'describe_table',description:'查看一张表的字段、类型和中文备注',parameters:{type:'object',properties:{source:{type:'string'},table:{type:'string'}},required:['table']}},
     {name:'query',description:'执行一条只读 SELECT，最多返回 50 行样本；可以用 {{month}} 等占位符（按报告月份替换）',parameters:{type:'object',properties:{source:{type:'string'},sql:{type:'string'},limit:{type:'integer'}},required:['sql']}},
-    {name:'list_report_cells',description:'列出这份月报的章节和格子（编号、标题、跳转 anchor、各格子总结摘要）。做导航、总览、引用或总结其他格子时先用它',parameters:{type:'object',properties:{}}}
+    {name:'list_report_cells',description:'列出这份月报的章节和格子（编号、标题、跳转 anchor、各格子总结摘要）。做导航、总览、引用或总结其他格子时先用它',parameters:{type:'object',properties:{}}},
+    {name:'suggest_tables',description:'按一段问题文字推荐最相关的业务表（表名、中文备注、匹配到的词），并附上前两张的字段',parameters:{type:'object',properties:{text:{type:'string',description:'问题或提示词原文'}},required:['text']}},
+    {name:'find_value',description:'在业务库一张表的文字列里查找包含某个值的列和取值（如“埃及”在哪一列、各有多少行），一次查完多个维度列',parameters:{type:'object',properties:{source:{type:'string'},table:{type:'string'},keyword:{type:'string'},columns:{type:'array',items:{type:'string'},description:'可选，只在这些列里找'}},required:['table','keyword']}}
 ];
 async function runTool(call,month,context={}){
     context.signal?.throwIfAborted();
     if(call.name==='list_report_cells')return context.outline||{chapters:[],note:'没有拿到月报大纲'};
     const args=call.args||{},source=args.source==='app'?'app':'netcare';
-    const execute=(tool,toolArgs)=>http('POST','/agent/execute',{tool,args:toolArgs},context.signal,context.observe).then(data=>data.result);
+    const execute=(tool,toolArgs)=>cached(tool,toolArgs,context,()=>http('POST','/agent/execute',{tool,args:toolArgs},context.signal,context.observe).then(data=>data.result));
     if(call.name==='list_tables')return execute('list_tables',{source,keyword:String(args.keyword||'')});
-    if(call.name==='describe_table')return execute('describe_table',{source,table:String(args.table||'')});
+    if(call.name==='describe_table'){
+        // 推荐表时已经带回的字段直接复用（30 分钟内），不再请求基座
+        const known=source==='netcare'&&FACTS.tables.get(String(args.table||'').toLowerCase());
+        if(known&&Date.now()-known.at<1800000){context.onCacheHit?.();return {source:'netcare',table:known.table,columns:known.columns};}
+        return execute('describe_table',{source,table:String(args.table||'')});
+    }
+    if(call.name==='suggest_tables')return execute('suggest_tables',{text:String(args.text||'').slice(0,4000)});
+    if(call.name==='find_value')return execute('find_value',{source,table:String(args.table||''),keyword:String(args.keyword||''),...(Array.isArray(args.columns)?{columns:args.columns.slice(0,20).map(String)}:{})});
     if(call.name==='query'){const sql=M.validMonth(month)?resolveSql(args.sql,month):String(args.sql||'');return execute('query',{source,sql,limit:Math.max(1,Math.min(50,Number(args.limit)||20))});}
     throw new Error('未知工具 '+call.name+'，可用：'+TOOLS.map(tool=>tool.name).join('、'));
+}
+/* 同一页面里的工具结果缓存：同一张表的字段、同一条 SQL 在一次对话的问答和生成阶段常被反复查，
+   命中时直接返回（不再请求基座）。并发的相同请求共用一个结果；出错不缓存。 */
+const TOOL_CACHE=new Map(), TOOL_CACHE_MS={list_tables:600000,describe_table:600000,suggest_tables:600000,find_value:600000,query:300000};
+function cached(tool,args,context,load){
+    const key=tool+'|'+JSON.stringify(args),now=Date.now(),hit=TOOL_CACHE.get(key);
+    if(hit&&now-hit.at<(TOOL_CACHE_MS[tool]||0)){context.onCacheHit?.();return hit.value;}
+    const value=load().then(result=>{remember(tool,args,result);return result;});
+    TOOL_CACHE.set(key,{at:now,value});
+    value.catch(()=>{if(TOOL_CACHE.get(key)?.value===value)TOOL_CACHE.delete(key);});
+    if(TOOL_CACHE.size>300)TOOL_CACHE.delete(TOOL_CACHE.keys().next().value);
+    return value;
+}
+/* 已查到的数据资料（字段、找到的取值、试跑通过的 SQL）：问答阶段查到的东西，后续提问和生成阶段按提示词里出现的
+   表名直接带上，模型不用从头再找一遍。只保存在当前页面。 */
+const FACTS={tables:new Map(),values:[],queries:[]};
+function remember(tool,args,result){
+    if(!result||typeof result!=='object')return;
+    const keepTable=(table,columns)=>{if(table&&Array.isArray(columns)&&columns.length)FACTS.tables.set(String(table).toLowerCase(),{table:String(table),columns,at:Date.now()});};
+    if(tool==='describe_table'&&result.source!=='app')keepTable(result.table,result.columns);
+    if(tool==='suggest_tables')for(const item of result.columns||[])keepTable(item.table,item.columns);
+    if(tool==='find_value'&&Array.isArray(result.matches)&&result.matches.length){FACTS.values=[{table:result.table,keyword:result.keyword,matches:result.matches.slice(0,8)},...FACTS.values.filter(v=>!(v.table===result.table&&v.keyword===result.keyword))].slice(0,20);}
+    if(tool==='query'&&result.sql&&args.source!=='app'){FACTS.queries=[{sql:String(result.sql),rows:result.row_count,sample:(result.rows||[]).slice(0,3)},...FACTS.queries.filter(q=>q.sql!==result.sql)].slice(0,30);}
+}
+const factClip=(text,size)=>text.length>size?text.slice(0,size)+'…':text;
+function knownFacts(text){
+    const low=String(text||'').toLowerCase(),out=[];
+    const tables=[...FACTS.tables.values()].filter(item=>low.includes(item.table.toLowerCase())).slice(0,3);
+    for(const item of tables)out.push(factClip(`表 ${item.table} 的字段（已查过）：`+item.columns.map(col=>`${col.field}${col.type?':'+col.type:''}${col.comment?'('+col.comment+')':''}`).join('，'),3500));
+    const names=tables.map(item=>item.table.toLowerCase()),about=sql=>names.some(name=>String(sql).toLowerCase().includes(name));
+    for(const item of FACTS.values.filter(v=>names.includes(String(v.table).toLowerCase())).slice(0,4))
+        out.push(factClip(`在 ${item.table} 里查找“${item.keyword}”：`+item.matches.map(m=>`${m.column}=${m.value}（${m.rows} 行）`).join('；'),600));
+    for(const item of FACTS.queries.filter(q=>about(q.sql)).slice(0,4))
+        out.push(factClip(`试跑通过（返回 ${item.rows} 行；报告月份已替换成具体值）：${item.sql}；样例：${JSON.stringify(item.sample)}`,900));
+    return out.join('\n').slice(0,9000);
+}
+// 第一轮之前由页面先查好资料放进任务内容：之前查过的表直接带上；没有的话按问题文字推荐候选表并附字段。
+async function grounding(text,month,context){
+    const known=knownFacts(text);
+    if(known)return '【预先查到的资料：前面已经查过，可直接使用，不用再查这些表的字段】\n'+known;
+    if(String(text||'').replace(/\s/g,'').length<4)return '';
+    const call={id:'prefetch_'+Date.now(),name:'suggest_tables',args:{text:String(text).slice(0,4000)}};
+    const done=await callTool(call,month,{...context,prefetch:true});
+    if(done.abort)throw done.abort;
+    const value=done.value;
+    if(!value?.tables?.length)return '';
+    const lines=value.tables.map(item=>`- ${item.table}${item.comment?'（'+item.comment+'）':''}${item.module?' 模块：'+item.module:''}${item.empty?' 空表':''}${item.failed?' 最近查询失败 '+item.failed+' 次':''}`);
+    const columns=(value.columns||[]).filter(item=>item.columns).map(item=>factClip(`表 ${item.table} 的字段：`+item.columns.map(col=>`${col.field}${col.type?':'+col.type:''}${col.comment?'('+col.comment+')':''}`).join('，'),3500));
+    return ['【预先查到的资料：页面按问题关键词自动匹配的候选表，可能不完全相关；相关就直接用，不用再 list_tables / describe_table 这些表】',...lines,...columns].join('\n');
+}
+// 执行一个工具调用：记调试轨迹、统计耗时与缓存命中；出错时把错误交回模型，停止时向上抛。
+async function callTool(call,month,context){
+    let hit=false;
+    const started=Date.now(),entry=trace({kind:'tool',stage:'tool',name:call.name+(context.prefetch?'（页面预取）':''),args:call.args||{},status:'running'});
+    try{
+        const value=await runTool(call,month,{...context,onCacheHit:()=>{hit=true;}});
+        const content=JSON.stringify(clean(value))??'null';
+        Object.assign(entry,{stage:'tool_done',status:'success',cached:hit||undefined,result:clean(value),modelResult:content.slice(0,TOOL_RESULT_CHARS),modelTruncated:content.length>TOOL_RESULT_CHARS,ms:Date.now()-started});
+        publish(entry);context.stats?.tool(call.name,Date.now()-started,hit,'',context.prefetch);
+        return {value,content:content.slice(0,TOOL_RESULT_CHARS)};
+    }catch(error){
+        Object.assign(entry,{stage:'tool_done',status:error.name==='AbortError'?'cancelled':'error',error:error.message,result:{error:error.message},ms:Date.now()-started});
+        publish(entry);
+        if(error.name==='AbortError')return {abort:error};
+        context.stats?.tool(call.name,Date.now()-started,false,error.message,context.prefetch);
+        return {error:clean(error.message)};
+    }
 }
 // 配方里的 SQL 来源按报告月份试跑一遍：出错的来源交回模型修正（对应平台版的 unknownSources 检查）。
 async function sqlProblems(month,sources,signal,observe){
@@ -112,10 +188,23 @@ function renderMessages(messages){
         return String(item.content||'');
     }).join('\n\n');
 }
-const toolProtocol=tools=>'\n\n【工具调用方式】这个对话里没有原生工具调用，改为输出 JSON 调用工具：需要查数据时，整条回复只输出一个对象 {"tool":"工具名","args":{参数}}（一次一个，不要夹带其它文字）；页面执行后会把结果发给你，你再继续调用工具，或按上面的约定输出最终 JSON。可用工具：\n'+tools.map(tool=>`- ${tool.name}(${Object.keys(tool.parameters?.properties||{}).join(', ')})：${tool.description}`).join('\n');
-function createClient(conv,signal,observe){
+const toolProtocol=tools=>'\n\n【工具调用方式】这个对话里没有原生工具调用，改为输出 JSON 调用工具。需要查数据时，整条回复只输出工具调用（不要夹带其它文字）：一个工具写 {"tool":"工具名","args":{参数}}；几个互不依赖的查询一次写成 {"tools":[{"tool":"工具名","args":{参数}},{"tool":"工具名","args":{参数}}]}，最多 '+MAX_PARALLEL_TOOLS+' 个，页面并行执行后把结果一起发给你。每一轮往返都要几十秒，能一起查的就一起发。页面执行后你再继续调用工具，或按上面的约定输出最终 JSON。可用工具：\n'+tools.map(tool=>`- ${tool.name}(${Object.keys(tool.parameters?.properties||{}).join(', ')})：${tool.description}`).join('\n');
+// 回复里的工具调用：单个 {"tool":…}、批量 {"tools":[…]}，或几行各写一个 {"tool":…}。
+function toolCallsOf(text,tools,started){
+    const raw=String(text||'').trim().replace(/^```(?:json)?\s*|\s*```$/g,'');
+    const value=parseReplyDetailed(raw).value;
+    if(!value||typeof value!=='object'||value.type)return [];
+    let list=Array.isArray(value.tools)?value.tools:typeof value.tool==='string'?[value]:[];
+    if(list.length===1&&!Array.isArray(value.tools)){
+        let rest=raw.slice(raw.indexOf(firstObject(raw))+firstObject(raw).length);
+        while(list.length<MAX_PARALLEL_TOOLS){const next=firstObject(rest);if(!next)break;let item=null;try{item=JSON.parse(next);}catch(_){}if(!item||typeof item.tool!=='string')break;list.push(item);rest=rest.slice(rest.indexOf(next)+next.length);}
+    }
+    return list.filter(call=>call&&typeof call.tool==='string'&&tools.some(tool=>tool.name===call.tool)).slice(0,MAX_PARALLEL_TOOLS)
+        .map((call,index)=>({id:'call_'+started+'_'+index,name:call.tool,args:call.args&&typeof call.args==='object'?call.args:{}}));
+}
+function createClient(conv,signal,observe,stats=null){
     let thread=null;
-    return {signal,observe,async generateChat(options){
+    return {signal,observe,stats,async generateChat(options){
         signal?.throwIfAborted();
         const messages=options.messages||[],tools=options.tools||null;let prompt;
         if(thread&&thread.messages===messages&&messages.length>=thread.sent){
@@ -132,11 +221,12 @@ function createClient(conv,signal,observe){
             const text=String(await conv.ask(prompt,undefined,options)||'');
             signal?.throwIfAborted();
             let toolCalls=[];
-            if(tools){const value=parseReplyDetailed(text).value;if(value&&typeof value.tool==='string'&&!value.type&&tools.some(tool=>tool.name===value.tool))toolCalls=[{id:'call_'+started,name:value.tool,args:value.args&&typeof value.args==='object'?value.args:{}}];}
+            if(tools)toolCalls=toolCallsOf(text,tools,started);
+            stats?.round(Date.now()-started,toolCalls.map(call=>call.name),prompt.length,text.length);
             Object.assign(entry,{ms:Date.now()-started,reply:clip(text),toolCalls:toolCalls.length?clip(toolCalls.map(call=>({name:call.name,args:call.args}))):'',...(conv.transport!=='model'&&window.ADCChat?.lastRun?{adcRun:clean(window.ADCChat.lastRun)}:{})});
             Object.assign(entry,{stage:'model_done',status:'success'});publish(entry);
             return {text:toolCalls.length?'':text,toolCalls};
-        }catch(error){Object.assign(entry,{stage:'failed',status:error.name==='AbortError'?'cancelled':'error',ms:Date.now()-started,error:error.message,...(conv.transport!=='model'&&window.ADCChat?.lastRun?{adcRun:clip(window.ADCChat.lastRun)}:{})});publish(entry);throw error;}
+        }catch(error){stats?.round(Date.now()-started,[],prompt.length,0,error.name==='AbortError'?'已停止':error.message);Object.assign(entry,{stage:'failed',status:error.name==='AbortError'?'cancelled':'error',ms:Date.now()-started,error:error.message,...(conv.transport!=='model'&&window.ADCChat?.lastRun?{adcRun:clip(window.ADCChat.lastRun)}:{})});publish(entry);throw error;}
     }};
 }
 
@@ -359,22 +449,11 @@ async function runWithTools(client, { system, month, messages, accept, fallback,
         if (result.toolCalls?.length && step < MAX_TOOL_STEPS) {
             client = result.providerClient || client; // keep the provider that actually answered for the rest of the loop
             messages.push({ role: 'model', content: result.text || '', toolCalls: result.toolCalls });
-            const toolResults = [];
-            for (const call of result.toolCalls) {
-                toolLog.push(call.name);
-                const started=Date.now(),entry=trace({kind:'tool',stage:'tool',name:call.name,args:call.args||{},status:'running'});
-                try{
-                    const value=await runTool(call,month,{...context,signal:client.signal,observe:client.observe});
-                    const content=JSON.stringify(clean(value))??'null';
-                    toolResults.push({id:call.id,name:call.name,content:content.slice(0,TOOL_RESULT_CHARS)});
-                    Object.assign(entry,{stage:'tool_done',status:'success',result:clean(value),modelResult:content.slice(0,TOOL_RESULT_CHARS),modelTruncated:content.length>TOOL_RESULT_CHARS,ms:Date.now()-started});
-                }catch(error){
-                    Object.assign(entry,{stage:'tool_done',status:error.name==='AbortError'?'cancelled':'error',error:error.message,result:{error:error.message},ms:Date.now()-started});
-                    if(error.name==='AbortError'){publish(entry);throw error;}
-                    toolResults.push({id:call.id,name:call.name,content:clean(error.message),isError:true});
-                }
-                publish(entry);
-            }
+            // 一轮里的多个工具调用并行执行，结果按调用顺序一起交回模型
+            const done = await Promise.all(result.toolCalls.map(call => { toolLog.push(call.name); return callTool(call, month, { ...context, signal: client.signal, observe: client.observe, stats: client.stats }); }));
+            const aborted = done.find(item => item.abort);
+            if (aborted) throw aborted.abort;
+            const toolResults = result.toolCalls.map((call, index) => done[index].error !== undefined ? { id: call.id, name: call.name, content: done[index].error, isError: true } : { id: call.id, name: call.name, content: done[index].content });
             messages.push({ role: 'tool', toolResults });
             continue;
         }
@@ -393,8 +472,10 @@ async function runWithTools(client, { system, month, messages, accept, fallback,
 // Conversation turn: answers data questions or asks; never compiles a recipe.
 const styleLine = style => style ? `月报整体风格默认要求（格子已确认的局部例外优先：【风格与配色】决定样式、配色和语气；其它分类是每个格子生成内容时的通用要求，和默认做法冲突时以这里为准）：\n${style}` : '';
 
-function cellTurn(client, { month, prompt, chat, message, style = '', outline = null }) {
-    const context = [`报告月份：${month}`, prompt ? `这个格子当前的最终提示词：\n${prompt}` : '这个格子还没有最终提示词', styleLine(style)].filter(Boolean).join('\n');
+async function cellTurn(client, { month, prompt, chat, message, style = '', outline = null }) {
+    const recent = historyMessages(chat).slice(-6).map(item => item.content).join('\n');
+    const facts = await grounding([message, prompt, recent].filter(Boolean).join('\n'), month, { outline, signal: client.signal, observe: client.observe, stats: client.stats });
+    const context = [`报告月份：${month}`, prompt ? `这个格子当前的最终提示词：\n${prompt}` : '这个格子还没有最终提示词', styleLine(style), facts].filter(Boolean).join('\n');
     const messages = [{ role: 'user', content: context }, { role: 'model', content: '好的。' }, ...historyMessages(chat), { role: 'user', content: message }];
     return runWithTools(client, { system: CHAT_PROMPT, month, messages, context: { outline }, fallback: { type: 'answer', text: '抱歉，我这次没能整理出回答，请换个说法再试一次。' }, accept: (reply, toolLog) => {
         if (asksAboutConflict(reply)) return { retry: CONFLICT_RETRY };
@@ -413,10 +494,12 @@ function tidyRecipe(recipe) {
 }
 
 // Compiles the confirmed prompt; an error from a previous run is passed back so the model can fix it.
-function compileTurn(client, { month, prompt, recipe, error, style = '', outline = null, previousPrompt = '' }) {
+const recipeSql = recipe => { try { return recipe ? (M.normalizeRecipe(recipe).sources || []).map(source => source.sql || '').join('\n') : ''; } catch (_) { return ''; } };
+async function compileTurn(client, { month, prompt, recipe, error, style = '', outline = null, previousPrompt = '' }) {
     // A working recipe from an earlier prompt is the base, so a small prompt change does not reroll the title or layout.
     const base = recipe && !error && previousPrompt && previousPrompt !== prompt ? `之前的提示词：\n${previousPrompt}\n\n按之前提示词做出、能正常运行的配方：${JSON.stringify(recipe).slice(0, 12000)}\n在这个配方基础上按提示词的变化修改：没有被新要求替换的部分保持原样；展示形式变化时，旧 render、图表/卡片及小格子布局必须重建，旧配方只作数据与计算参考；提示词里有而这个配方还没做到的要求（例如要显示的标题）必须补上；数据来源换了时重新用工具查清新来源的准确名称。` : '';
-    const content = [`报告月份：${month}`, `最终提示词：\n${prompt}`, styleLine(style), recipe && error ? `上一次的配方：${JSON.stringify(recipe).slice(0, 12000)}\n运行出错：${error}\n请修正。` : base].filter(Boolean).join('\n\n');
+    const facts = await grounding([prompt, recipeSql(recipe)].join('\n'), month, { outline, signal: client.signal, observe: client.observe, stats: client.stats }).catch(problem => { if (problem.name === 'AbortError') throw problem; return ''; });
+    const content = [`报告月份：${month}`, `最终提示词：\n${prompt}`, styleLine(style), facts, recipe && error ? `上一次的配方：${JSON.stringify(recipe).slice(0, 12000)}\n运行出错：${error}\n请修正。` : base].filter(Boolean).join('\n\n');
     return runWithTools(client, { system: COMPILE_PROMPT, month, messages: [{ role: 'user', content }], context: { outline }, fallback: { type: 'ask', question: '这个提示词我还没能编译成可运行的配方，能在对话里补充一下用哪张表、哪些列吗？', choices: [] }, accept: async (reply, toolLog) => {
         if (reply?.type === 'ask' && reply.question) return { result: askResult(reply, toolLog) };
         if (reply?.type === 'recipe') {
@@ -780,17 +863,36 @@ async function post(path,body={}, {signal,onState,onEvent}={}){
     if(rel.startsWith('/image'))throw fail(501,NO_IMAGES);
     const handler=AI[rel];if(!handler)throw fail(404,'接口不存在：'+rel);
     const debug=body._debug===true,input={...body};delete input._debug;delete input._stream;
-    const store=operation(debug,onEvent);
+    const store=operation(debug,onEvent),stats=opStats(rel);
     if(!window.DragonClaw?.ready())throw fail(503,'AI 对话不可用：需要在数字人云端（与 ADC 同源）打开本页面，或在 Dragon Platform 中托管运行。');
     return window.DragonClaw.conversation('air',true,async conv=>{
-        traceStore=store;
-        try{const reply=await handler(input,createClient(conv,signal,store.observe));signal?.throwIfAborted();return debug&&reply&&typeof reply==='object'?{...reply,_trace:store.finish()}:reply;}
-        catch(error){if(debug)error.body={_trace:store.finish()};throw error;}
+        traceStore=store;stats.transport=conv.transport==='model'?'model':'adc';stats.model=conv.profile?.model||'';
+        try{const reply=await handler(input,createClient(conv,signal,store.observe,stats));signal?.throwIfAborted();stats.report(null,reply);return debug&&reply&&typeof reply==='object'?{...reply,_trace:store.finish()}:reply;}
+        catch(error){stats.report(error);if(debug)error.body={_trace:store.finish()};throw error;}
         finally{traceStore=null;}
-    },{signal,onState,onDiagnostic:store.observe}).then(reply=>debug&&reply&&typeof reply==='object'?{...reply,_trace:store.finish()}:reply).catch(error=>{if(debug)error.body={...(error.body||{}),_trace:store.finish()};throw error;});
+    },{signal,onState,onDiagnostic:store.observe}).then(reply=>debug&&reply&&typeof reply==='object'?{...reply,_trace:store.finish()}:reply).catch(error=>{stats.report(error);if(debug)error.body={...(error.body||{}),_trace:store.finish()};throw error;});
+}
+/* 交互日志：每次 AI 操作记一条汇总（模型往返几轮、每轮耗时和调用了哪些工具、工具耗时与缓存命中、页面预取），
+   用来看一次提问慢在哪里；单次 ADC / 模型 API 往返和基座查询另有逐条日志。 */
+const OP_NAMES={'/cell/chat':'格子对话','/cell/prompt':'整理格子提示词','/cell/compile':'生成格子','/cell/narrative':'写格子总结','/cell/gist':'格子摘要','/cell/text-edit':'文字修改','/cell/restyle':'按章节样式重排','/report/chat':'整体风格对话','/report/prompt':'整理整体风格','/report/theme':'生成主题','/chapter/chat':'章节样式对话','/chapter/prompt':'整理章节样式','/template/field':'生成开头字段','/template/field/chat':'开头字段对话','/template/field/prompt':'整理字段提示词','/debug/explain':'解读调试记录'};
+function opStats(rel){
+    const stats={rounds:[],tools:[],started:Date.now(),transport:'',model:'',reported:false};
+    stats.round=(ms,tools,promptChars,answerChars,error)=>stats.rounds.push({ms,tools,promptChars,answerChars,...(error?{error}:{})});
+    stats.tool=(name,ms,cached,error,prefetch)=>stats.tools.push({name,ms,...(cached?{cached:true}:{}),...(error?{error:String(error).slice(0,300)}:{}),...(prefetch?{prefetch:true}:{})});
+    stats.report=(error,reply)=>{
+        if(stats.reported||!window.OpsLog)return;stats.reported=true;
+        const stopped=error?.name==='AbortError',sum=list=>list.reduce((n,item)=>n+(item.ms||0),0),hits=stats.tools.filter(item=>item.cached).length;
+        const ms=Date.now()-stats.started,name=OP_NAMES[rel]||rel,via=stats.transport==='model'?'模型 API'+(stats.model?' '+stats.model:''):'ADC';
+        window.OpsLog.report({kind:'ai',status:error&&!stopped?'error':'ok',ms,
+            title:`AI 月报 · ${name}${stopped?' · 已停止':error?' · 失败':''}：${via} 往返 ${stats.rounds.length} 轮，工具 ${stats.tools.length} 次${hits?`（缓存命中 ${hits} 次）`:''}，用时 ${(ms/1000).toFixed(1)} 秒`,
+            detail:{operation:rel,transport:stats.transport,model:stats.model||undefined,rounds:stats.rounds.length,modelMs:sum(stats.rounds),toolCalls:stats.tools.length,toolMs:sum(stats.tools),cacheHits:hits,
+                prefetched:stats.tools.some(item=>item.prefetch)||undefined,replyType:reply&&typeof reply==='object'?reply.type:undefined,
+                perRound:stats.rounds,tools:stats.tools.slice(0,80),error:error&&!stopped?String(error.message||error):undefined}});
+    };
+    return stats;
 }
 window.API={get,post,delete:del};
-window.AiReportBackend={monthValues,resolveSql,TOOLS,createClient};
+window.AiReportBackend={monthValues,resolveSql,TOOLS,createClient,clearToolCache:()=>{TOOL_CACHE.clear();FACTS.tables.clear();FACTS.values=[];FACTS.queries=[];}};
 
 // 主题化确认 / 输入弹窗（替代平台的 AppDialog）
 function dialog(message,{tone='',confirmText='确定',input=null}={}){

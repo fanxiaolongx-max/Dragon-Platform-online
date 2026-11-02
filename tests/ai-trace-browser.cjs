@@ -52,16 +52,18 @@ window.sid='session-0';document.querySelector('form').onsubmit=async event=>{eve
  const log=await page.evaluate(id=>AiReportTrace.list(id).at(-1),id);
  assert.equal(log.status,'success');
  for(const stage of ['queued','lane_acquired','frame_stealth','frame_ready','composer_fill','composer_submit','capture_hook','session_capture','stream_tool','stream_child','stream_done','frame_restore','lane_released'])assert(log.steps.some(s=>s.stage===stage),'missing stage '+stage);
- assert.equal(log.steps.filter(s=>s.kind==='tool').length,3);assert.equal(log.steps.filter(s=>s.kind==='http').length,3);
+ // 第一轮之前页面先按问题预取候选表（suggest_tables），之后是模型要的 3 个工具
+ assert.equal(log.steps.filter(s=>s.kind==='tool').length,4);assert.equal(log.steps.filter(s=>s.kind==='http').length,4);
+ assert.equal(log.steps.find(s=>s.kind==='tool').name,'suggest_tables（页面预取）');assert.equal(executions[0].tool,'suggest_tables');
  assert.equal(log.steps.find(s=>s.kind==='tool'&&s.name==='query').result.rows[0].detail,long);
  assert.equal(log.steps.find(s=>s.kind==='tool'&&s.name==='query').modelTruncated,true);
- assert.equal(executions[2].args.sql,"SELECT '2026-10' AS period");
+ assert.equal(executions[3].args.sql,"SELECT '2026-10' AS period");
  assert.doesNotMatch(JSON.stringify(log),/fixture-page-secret|fixture-csrf-secret|fixture-inner-secret|fixture-data-secret/);
  await page.locator('.air-dev-entry > summary').last().click();await page.screenshot({path:path.join(temp,'call-log.png')});
  const download=page.waitForEvent('download');await page.locator('[data-dev-export]').click();const file=await download;const exported=JSON.parse(fs.readFileSync(await file.path(),'utf8'));
- assert.equal(exported.version,2);assert.equal(exported.environment.transport,'ADC embedded page');assert.equal(exported.environment.frame.sameOrigin,true);assert.equal(exported.entries.length,1);assert.equal(exported.entries[0].steps.filter(s=>s.kind==='tool').length,3);
+ assert.equal(exported.version,2);assert.equal(exported.environment.transport,'ADC embedded page');assert.equal(exported.environment.frame.sameOrigin,true);assert.equal(exported.entries.length,1);assert.equal(exported.entries[0].steps.filter(s=>s.kind==='tool').length,4);
  // A returned business error is visible with HTTP 200, and stays attributable to this cell.
- failTool=true;await page.evaluate(id=>{AiReportApp.converse(id,'再次查询');},id);await page.waitForFunction(()=>!AiReportApp.state.busy.size);
+ failTool=true;await page.evaluate(id=>{AiReportBackend.clearToolCache();AiReportApp.converse(id,'再次查询');},id);await page.waitForFunction(()=>!AiReportApp.state.busy.size);
  const failed=await page.evaluate(id=>AiReportTrace.list(id).at(-1),id);
  assert(failed.steps.some(s=>s.kind==='http'&&s.status==='error'&&s.httpStatus===200&&s.businessCode===500&&s.requestId==='application-tool-fixture'));
  assert(failed.steps.some(s=>s.kind==='tool'&&s.name==='query'&&s.status==='error'));
@@ -74,6 +76,16 @@ window.sid='session-0';document.querySelector('form').onsubmit=async event=>{eve
  await page.evaluate(()=>AiReportTrace.setEnabled(true));hold=true;await page.evaluate(id=>{AiReportApp.converse(id,'停止测试');},id);await page.waitForFunction(()=>document.querySelector('[data-live-progress]')?.textContent.includes('子会话'));
  await page.locator('#airStop').click();await page.waitForFunction(()=>!AiReportApp.state.busy.size&&AiReportTrace.list(AiReportApp.state.selected).at(-1)?.status==='cancelled');
  const cancelled=await page.evaluate(id=>AiReportTrace.list(id).at(-1),id);assert(cancelled.steps.some(s=>s.stage==='stopped'));hold=false;release();
+ // A page send that never leaves (timeout) clears its own question from the native composer; a user's draft still blocks.
+ const draft=await page.evaluate(async()=>{
+  const doc=document.getElementById('aiBarFrame').contentDocument,box=doc.querySelector('textarea'),form=doc.querySelector('form'),send=form.onsubmit;
+  form.onsubmit=event=>event.preventDefault();
+  let timeout='';try{await ADCChat.ask('超时测试问题',{viaPage:true,timeoutMs:300});}catch(e){timeout=e.message;}
+  const left=box.value;form.onsubmit=send;
+  box.value='用户自己写的草稿';let blocked='';try{await ADCChat.ask('另一个问题',{viaPage:true,timeoutMs:300});}catch(e){blocked=e.message;}
+  box.value='';return {timeout,left,blocked};
+ });
+ assert.match(draft.timeout,/超时/);assert.equal(draft.left,'','The script removes its own unsent question');assert.match(draft.blocked,/未发送草稿/);
  await page.setViewportSize({width:390,height:844});await page.locator('#airChat').scrollIntoViewIfNeeded();
  assert(await page.locator('[data-dev-export]').isVisible());assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  await page.screenshot({path:path.join(temp,'narrow.png')});assert.deepEqual(errors,[]);

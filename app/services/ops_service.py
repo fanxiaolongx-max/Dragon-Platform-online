@@ -24,7 +24,8 @@ from app.utils.sql_helper import format_sql_value as lit
 
 REPORT_ID = 0
 LOG_SECTION, HEALTH_SECTION, SNAP_SECTION = "ops_log", "ops_tbl_health", "ops_tbl_snap"
-KINDS = ("db", "adc", "tables", "api", "ui")
+KINDS = ("db", "adc", "model", "ai", "tables", "api", "ui")
+CLIENT_KINDS = ("adc", "model", "ai", "ui")
 RETAIN_DAYS = 30
 FLUSH_DELAY = 2.0
 BUFFER_MAX = 2000
@@ -123,7 +124,15 @@ async def flush() -> None:
                 await db.execute_app_schema(
                     f"INSERT INTO t_report_config (report_id, block_id, section, config_text, created_at, updated_at) VALUES {values}")
             except Exception as exc:
-                logger.warning(f"交互日志写入失败（丢弃 {len(chunk)} 条）：{exc}")
+                # 整批失败时逐条重写，一条写不进去（超长、特殊字符）不连累同批的其它日志
+                logger.warning(f"交互日志批量写入失败，改为逐条写入（{len(chunk)} 条）：{exc}")
+                for e in chunk:
+                    try:
+                        await db.execute_app_schema(
+                            "INSERT INTO t_report_config (report_id, block_id, section, config_text, created_at, updated_at) "
+                            f"VALUES ({REPORT_ID}, NULL, '{LOG_SECTION}', {lit(_dumps(e))}, {lit(e['at'])}, {lit(now)})")
+                    except Exception as one:
+                        logger.warning(f"交互日志写入失败（丢弃 1 条：{e.get('title', '')[:60]}）：{one}")
         if _health_dirty:
             try:
                 await _ensure_health()
@@ -280,6 +289,16 @@ def install() -> None:
 # 浏览器上报（ADC 对话等）
 # --------------------------------------------------------------------
 
+def _client_time(value: Any) -> str:
+    """浏览器发生时间（重试上报时与服务端收到时间不同）；只接受两天内的合理时间。"""
+    try:
+        from datetime import datetime
+        ts = datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return ""
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)) if abs(time.time() - ts) < 2 * 86400 else ""
+
+
 def record_client(entries: Any, page: str = "") -> int:
     count = 0
     for item in (entries if isinstance(entries, list) else [])[:50]:
@@ -289,9 +308,12 @@ def record_client(entries: Any, page: str = "") -> int:
         detail = {str(k)[:40]: v if not isinstance(v, str) and len(_dumps(v)) <= TEXT_MAX else clip(v)
                   for k, v in list(detail.items())[:30]}
         ms = item.get("ms")
-        record("adc" if item.get("kind") == "adc" else "ui", str(item.get("title") or "前端事件"),
-               "error" if item.get("status") == "error" else "ok", detail,
-               int(ms) if isinstance(ms, (int, float)) else None, page_of("", str(item.get("page") or page)))
+        entry = record(item.get("kind") if item.get("kind") in CLIENT_KINDS else "ui", str(item.get("title") or "前端事件"),
+                       "error" if item.get("status") == "error" else "ok", detail,
+                       int(ms) if isinstance(ms, (int, float)) else None, page_of("", str(item.get("page") or page)))
+        at = _client_time(item.get("clientAt"))
+        if at:
+            entry["at"] = at
         count += 1
     return count
 

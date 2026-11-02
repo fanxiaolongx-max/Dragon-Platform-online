@@ -158,6 +158,8 @@ body.ai-report-page #aiBarFab{right:auto;left:18px}
   // 只保存当前浏览器标签页的配置；页面刷新后重新初始化。
   let config = null, controller = null, lastAnswer = "", captureState = null, lastRun = null;
   let runtimeRoute = null, routeCapture = null, pageAsk = null;
+  // 脚本最近一次填进原页面输入框、但没有发出去的问题：超时后留在框里的是它时自动清掉，不当成用户草稿。
+  let lastFilled = "";
   const fetchRequest = window.fetch.bind(window);
 
   function checkOrigin() {
@@ -364,10 +366,29 @@ body.ai-report-page #aiBarFab{right:auto;left:18px}
         " 个）；请打开聊天页并关闭其它编辑窗口，或提供输入框 HTML 以适配。");
     }
     const item = selected[0];
-    if (String("value" in item.el ? item.el.value : item.el.textContent || "").trim()) {
-      throw new Error("输入框已有未发送草稿，请先自行保存或清空，再运行 ask；脚本没有覆盖草稿。");
+    const draft = String("value" in item.el ? item.el.value : item.el.textContent || "").trim();
+    if (draft) {
+      if (!lastFilled || draft !== lastFilled.trim()) {
+        throw new Error("输入框已有未发送草稿，请先自行保存或清空，再运行 ask；脚本没有覆盖草稿。");
+      }
+      fillComposer(item.w, item.el, "");
+      window.AiOpsDiagnostics?.capture()?.("composer_cleared",{reason:"stale-script-draft",chars:draft.length});
     }
+    lastFilled = "";
     return item;
+  }
+
+  function fillComposer(owner, el, text) {
+    if ("value" in el) {
+      const proto = el.tagName === "TEXTAREA" ? owner.HTMLTextAreaElement.prototype : owner.HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+      if (!setter) throw new Error("无法设置当前输入框，请提供输入框 HTML。");
+      setter.call(el, text);
+    } else {
+      el.textContent = text;
+    }
+    el.dispatchEvent(new owner.Event("input", {bubbles:true, composed:true}));
+    el.dispatchEvent(new owner.Event("change", {bubbles:true}));
   }
 
   // 仅首次借用网页的真实发送流程。只发送用户当前的问题，不额外发送初始化问题。
@@ -472,16 +493,8 @@ body.ai-report-page #aiBarFab{right:auto;left:18px}
       if (!hooks.size) throw new Error("无法监听当前聊天页的 fetch。");
       console.info("[自动首次发送] 正在通过原网页发送当前问题，无需预先手动提问。");
       diagnostic("composer_fill",{prompt:question,promptChars:question.length});
-      if ("value" in el) {
-        const proto = el.tagName === "TEXTAREA" ? owner.HTMLTextAreaElement.prototype : owner.HTMLInputElement.prototype;
-        const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-        if (!setter) throw new Error("无法设置当前输入框，请提供输入框 HTML。");
-        setter.call(el, question);
-      } else {
-        el.textContent = question;
-      }
-      el.dispatchEvent(new owner.Event("input", {bubbles:true, composed:true}));
-      el.dispatchEvent(new owner.Event("change", {bubbles:true}));
+      fillComposer(owner, el, question);
+      lastFilled = question;
       await Promise.resolve(); // 等待 Vue 响应式输入状态更新。
       if (active.signal.aborted) throw new Error("网页发送已停止。");
       el.focus();
@@ -493,9 +506,20 @@ body.ai-report-page #aiBarFab{right:auto;left:18px}
       }));
       // 只触发一次提交。即使没有立即出现请求，也不再点击，避免重复提问。
       const response = await responseReady;
+      lastFilled = "";
       clearTimeout(timer);
       pageAsk = null;
       return await runAsk(question, options, response);
+    } catch (error) {
+      // 没发出去（超时或停止）：问题还留在原页面输入框里时清掉，下一次提问不会被当成“未发送草稿”挡住
+      try {
+        if (lastFilled && String("value" in el ? el.value : el.textContent || "").trim() === lastFilled.trim()) {
+          fillComposer(owner, el, "");
+          lastFilled = "";
+          diagnostic("composer_cleared",{reason:"send-failed"});
+        }
+      } catch {}
+      throw error;
     } finally {
       settled = true;
       restore();

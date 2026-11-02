@@ -112,6 +112,15 @@ TOOLS: list[dict[str, Any]] = [
      "description": "按主键 id 删除应用表的一行；执行前需用户在页面确认，删除前快照写入审计日志。",
      "params": {"table": {"type": "string", "enum": list(APP_TABLES)}, "id": {"type": "integer"}},
      "required": ["table", "id"]},
+    {"name": "suggest_tables", "title": "按问题推荐表", "risk": "read",
+     "description": "按一段问题或提示词里的关键词（中文备注、模块、表名）给业务库的表打分，返回最相关的几张表，并附上前两张的字段。不知道该查哪张表时先用它，比逐个 list_tables 关键字更快。",
+     "params": {"text": {"type": "string", "description": "用户的问题或格子提示词原文"}, "limit": {"type": "integer", "minimum": 1, "maximum": 10}},
+     "required": ["text"]},
+    {"name": "find_value", "title": "按值查找字段", "risk": "read",
+     "description": "在业务库一张表的文字列里查找包含某个值的列和取值（如“埃及”出现在哪一列、各有多少行），一次查完多个维度列；比逐列 GROUP BY 摸索快。",
+     "params": {"source": _SOURCE, "table": {"type": "string"}, "keyword": {"type": "string", "description": "要找的值，如 埃及、Egypt、Telecom"},
+                "columns": {"type": "array", "items": {"type": "string"}, "description": "可选，只在这些列里找；不传时自动挑选地区、代表处、国家、运营商、产品等文字列"}},
+     "required": ["source", "table", "keyword"]},
     {"name": "report_outline", "title": "查看 AI 月报", "risk": "read",
      "description": "不传 report_id 时列出全部 AI 月报；传 report_id 返回该月报的章节、格子 id、格子名、宽度和格子提示词。",
      "params": {"report_id": {"type": "integer"}},
@@ -433,6 +442,89 @@ async def _query(args: dict) -> dict:
             "truncated": cut or len(rows) >= limit, "limit": limit}
 
 
+_GRAM_STOP = set("月报 格子 数据 本月 上月 展示 统计 一下 哪些 多少 显示 表格 图表 每个 需要 这个 那个 情况 分析 可以 一个 我们 "
+                 "帮我 看看 查询 一张 列出 按照 报告 月份 用户 要求 内容 提示 结果 生成 总结 文字 指标 明细 的表".split())
+_TEXT_TYPE = re.compile(r"char|text|string|enum", re.I)
+_DIMENSION_HINT = re.compile(r"name|_cn|_en|region|country|office|operator|customer|carrier|area|province|city|network|product|family|line|vendor|type|status|phase|level|org|dept", re.I)
+
+
+def _grams(text: str) -> set[str]:
+    """问题或表备注里的检索词：中文按两字切分，英文/表名按单词。"""
+    text = str(text or "").lower()
+    grams = set()
+    for run in re.findall(r"[\u4e00-\u9fff]+", text):
+        grams.update(run[i:i + 2] for i in range(len(run) - 1))
+    for word in re.findall(r"[a-z][a-z0-9]{2,}", text.replace("_", " ")):
+        grams.add(word)
+    return grams - _GRAM_STOP
+
+
+async def _suggest_tables(args: dict) -> dict:
+    import math
+    text = str(args.get("text") or "")[:6000]
+    limit = max(1, min(10, int(args.get("limit") or 6)))
+    rows = await _business_tables()
+    docs = [(r, _grams(" ".join([r["table"], r.get("comment", ""), str(r.get("module", "")), str(r.get("category", ""))]))) for r in rows]
+    df: dict[str, int] = {}
+    for _, grams in docs:
+        for g in grams:
+            df[g] = df.get(g, 0) + 1
+    wanted, lowered = _grams(text), text.lower()
+    named = {m.lower() for m in re.findall(r"[A-Za-z_][A-Za-z0-9_]{3,}", text)}
+    scored = []
+    for row, grams in docs:
+        hits = sorted(wanted & grams)
+        score = sum(math.log(1 + len(docs) / df[g]) for g in hits)
+        if row["table"].lower() in named or row["table"].lower() in lowered:
+            score += 100
+        if row.get("empty") or row.get("failed"):
+            score *= 0.5
+        if score > 0:
+            scored.append((score, hits, row))
+    scored.sort(key=lambda item: -item[0])
+    top = scored[:limit]
+    result = {"tables": [{**row, "score": round(score, 1), "matched": hits[:8]} for score, hits, row in top]}
+    detailed = []
+    for score, _, row in top[:2]:
+        if score < 3 or (detailed and score < top[0][0] * 0.6):
+            break
+        try:
+            detailed.append({"table": row["table"], "columns": await DataService().list_columns(row["table"], "netcare")})
+        except Exception as exc:
+            detailed.append({"table": row["table"], "error": str(exc)[:200]})
+    result["columns"] = detailed
+    result["note"] = "按关键词自动匹配，可能不完全相关；以表备注和字段为准。" if top else "没有匹配到相关的表，请换关键词用 list_tables 搜。"
+    return result
+
+
+async def _find_value(args: dict) -> dict:
+    if args.get("source") != "netcare":
+        raise _fail("find_value 只支持业务库 netcare")
+    table = _ident(args.get("table"), "表名")
+    keyword = re.sub(r"['\"\\%_;`]", "", str(args.get("keyword") or "")).strip()[:50]
+    if not keyword:
+        raise _fail("keyword 不能为空")
+    columns = await DataService().list_columns(table, "netcare")
+    if not columns:
+        raise _fail(f"业务库中没有表 {table}，请先用 list_tables 查找真实表名")
+    text_cols = [c for c in columns if _TEXT_TYPE.search(str(c.get("type") or ""))]
+    asked = {str(c).lower() for c in (args.get("columns") or []) if isinstance(c, str)}
+    if asked:
+        picked = [c for c in text_cols if c["field"].lower() in asked]
+    else:
+        picked = sorted(text_cols, key=lambda c: 0 if _DIMENSION_HINT.search(c["field"]) else 1)[:10]
+    if not picked:
+        raise _fail(f"{table} 里没有可查找的文字列" + ("（指定的列不存在或不是文字列）" if asked else ""))
+    parts = [f"SELECT '{c['field']}' AS col, `{c['field']}` AS val, COUNT(*) AS n FROM `{table}` "
+             f"WHERE `{c['field']}` LIKE '%{keyword}%' GROUP BY `{c['field']}`" for c in picked if _IDENT.match(c["field"])]
+    sql = check_read_sql(f"SELECT col, val, n FROM ({' UNION ALL '.join(parts)}) t ORDER BY n DESC LIMIT 40")
+    rows = await query_business(sql, limit=40)
+    matches = [{"column": r.get("col"), "value": r.get("val"), "rows": r.get("n")} for r in rows]
+    return {"source": "netcare", "table": table, "keyword": keyword, "matches": matches,
+            "searched_columns": [c["field"] for c in picked],
+            "note": "" if matches else "这些列里都没有包含该值的数据；可以换写法（中英文、简称）或指定其它列再找。"}
+
+
 async def _report_outline(args: dict) -> dict:
     from app.services import air_service
     if args.get("report_id") in (None, ""):
@@ -560,7 +652,8 @@ async def execute(tool: str, args: Any, confirm_token: str | None = None, client
         raise _fail(f"{tool} 缺少参数：{', '.join(missing)}")
     try:
         if spec["risk"] == "read":
-            handler = {"list_tables": _list_tables, "describe_table": _describe_table, "query": _query, "report_outline": _report_outline}[spec["name"]]
+            handler = {"list_tables": _list_tables, "describe_table": _describe_table, "query": _query, "report_outline": _report_outline,
+                       "suggest_tables": _suggest_tables, "find_value": _find_value}[spec["name"]]
             return {"status": "ok", "tool": tool, "risk": "read", "result": await handler(args)}
         plan = await _plan_write(spec["name"], args)
         if not confirm_token:

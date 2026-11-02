@@ -62,3 +62,40 @@ test('AiOps cell prompt, compiler and narrative enforce text-only requests and r
  const result=await c.API.post('/api/ai-report/cell/narrative',{month:'2026-10',prompt:promptReply.prompt,recipe:compiled.recipe,result:{total:894},_debug:true});
  assert.equal(result.zh,'存量 894 个，待消减为零。');assert(result._trace.some(s=>s.kind==='retry'));assert.equal(queue.length,0);
 });
+
+test('fewer model round trips: page prefetch, batched tool calls, cached repeats and facts carried into compile',async()=>{
+ const c=runtime(),sent=[],prompts=[],reports=[];let inFlight=0,peak=0;
+ c.OpsLog={report:entry=>reports.push(entry)};
+ const columns=[{field:'rep_office_name_cn',type:'varchar',comment:'代表处'},{field:'eos_year_month',type:'varchar',comment:'EOS 月份'}];
+ c.fetch=async(url,options)=>{const body=JSON.parse(options.body);sent.push(body);inFlight++;peak=Math.max(peak,inFlight);await new Promise(r=>setTimeout(r,5));inFlight--;
+  const result=body.tool==='suggest_tables'?{tables:[{table:'nc_eos_risk',comment:'EOS 风险',score:9}],columns:[{table:'nc_eos_risk',columns}]}
+   :body.tool==='describe_table'?{source:'netcare',table:body.args.table,columns}
+   :body.tool==='find_value'?{table:body.args.table,keyword:body.args.keyword,matches:[{column:'rep_office_name_cn',value:'埃及代表处',rows:12}]}
+   :{source:'netcare',sql:body.args.sql,row_count:1,rows:[{n:12}]};
+  return new Response(JSON.stringify({code:0,data:{result}}));};
+ const replies=[
+  JSON.stringify({tools:[{tool:'find_value',args:{table:'nc_eos_risk',keyword:'埃及'}},{tool:'query',args:{sql:"SELECT COUNT(*) n FROM nc_eos_risk WHERE eos_year_month='{{month}}'"}}]}),
+  JSON.stringify({type:'ready',text:'业务库表 nc_eos_risk：埃及代表处按月统计'}),
+  // compile: two separate objects on two lines are one batch; describe_table repeats the chat-phase lookup
+  JSON.stringify({tool:'describe_table',args:{source:'netcare',table:'nc_eos_risk'}})+'\n'+JSON.stringify({tool:'query',args:{sql:"SELECT COUNT(*) n FROM nc_eos_risk WHERE eos_year_month='{{month}}'"}}),
+  JSON.stringify({type:'ask',question:'按代表处还是按国家？',choices:['代表处','国家']})
+ ];
+ c.DragonClaw={ready:()=>true,conversation:async(_owner,_fresh,fn)=>fn({reset:async()=>{},ask:async prompt=>{prompts.push(prompt);return replies.shift();}})};
+ const chat=await c.API.post('/api/ai-report/cell/chat',{month:'2026-10',message:'埃及代表处 EOS 风险产品版本每月统计',decided:true,_debug:true});
+ assert.equal(chat.type,'ready');
+ assert.equal(sent[0].tool,'suggest_tables','the page looks up candidate tables before the first model round');
+ assert.match(prompts[0],/预先查到的资料[\s\S]*nc_eos_risk（EOS 风险）[\s\S]*rep_office_name_cn:varchar\(代表处\)/);
+ assert.match(prompts[0],/\{"tools":\[/,'the protocol offers batched calls');
+ assert.deepEqual(sent.slice(1).map(b=>b.tool),['find_value','query']);assert.equal(peak,2,'batched calls run in parallel');
+ assert.match(prompts[1],/find_value：[\s\S]*query：/,'both results go back in one round');
+ const compiled=await c.API.post('/api/ai-report/cell/compile',{month:'2026-10',prompt:'业务库表 nc_eos_risk：埃及代表处按 rep_office_name_cn 统计',_debug:true});
+ assert.equal(compiled.type,'ask');
+ assert.equal(sent.filter(b=>b.tool==='suggest_tables').length,1,'compile reuses facts instead of searching again');
+ assert.match(prompts[2],/前面已经查过[\s\S]*rep_office_name_cn[\s\S]*埃及代表处（12 行）[\s\S]*试跑通过/);
+ assert.equal(sent.filter(b=>b.tool==='describe_table').length,0,'the repeated describe_table is served from facts/cache');
+ assert.equal(sent.filter(b=>b.tool==='query').length,1,'the identical SQL is served from cache');
+ assert(compiled._trace.some(s=>s.kind==='tool'&&s.cached));
+ const ops=reports.filter(r=>r.kind==='ai');assert.equal(ops.length,2);
+ assert.match(ops[0].title,/格子对话：ADC 往返 2 轮，工具 3 次/);assert.equal(ops[0].detail.prefetched,true);assert.equal(JSON.stringify(ops[0].detail.perRound.map(r=>r.tools)),JSON.stringify([['find_value','query'],[]]));
+ assert.match(ops[1].title,/生成格子：ADC 往返 2 轮，工具 2 次（缓存命中 2 次）/);
+});

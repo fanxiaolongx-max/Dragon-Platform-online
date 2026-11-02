@@ -366,13 +366,15 @@
     const open=parsed.search(/```dragon-action/);
     return open>=0 ? parsed.slice(0,open).trim() : parsed;
   }
-  const TOOL_LABEL={list_tables:'列出数据表', describe_table:'查看表结构', query:'只读查询', insert_row:'新增记录', update_row:'修改记录', delete_row:'删除记录', execute_sql:'原始写 SQL'};
+  const TOOL_LABEL={list_tables:'列出数据表', describe_table:'查看表结构', suggest_tables:'按问题推荐表', find_value:'按值查找字段', query:'只读查询', insert_row:'新增记录', update_row:'修改记录', delete_row:'删除记录', execute_sql:'原始写 SQL'};
   const SRC_LABEL={app:'应用库', netcare:'业务库 netcare'};
   function argSummary(a){
     const x=a.args||{};
     if(a.tool==='query') return (SRC_LABEL[x.source]||x.source||'')+' · '+String(x.sql||'').replace(/\s+/g,' ').slice(0,90);
     if(a.tool==='list_tables') return (SRC_LABEL[x.source]||x.source||'')+(x.keyword?' · 关键字 '+x.keyword:'');
     if(a.tool==='describe_table') return (SRC_LABEL[x.source]||x.source||'')+' · '+(x.table||'');
+    if(a.tool==='suggest_tables') return String(x.text||'').replace(/\s+/g,' ').slice(0,60);
+    if(a.tool==='find_value') return (x.table||'')+' · “'+(x.keyword||'')+'”';
     if(a.tool==='execute_sql') return String(x.sql||'').slice(0,90);
     return (x.table||'')+(x.id?' · id='+x.id:'');
   }
@@ -409,6 +411,10 @@
       h+='<div class="dct-sum">共 '+res.total+' 张表'+(res.truncated?'，显示前 '+res.rows.length+' 张':'')+'</div>'+rowsTable(res.rows, 30);
     } else if(a.tool==='describe_table'){
       h+='<div class="dct-sum">'+escH(res.table)+' · '+res.columns.length+' 个字段</div>'+rowsTable(res.columns, 60);
+    } else if(a.tool==='suggest_tables'){
+      h+='<div class="dct-sum">推荐 '+(res.tables||[]).length+' 张表</div>'+rowsTable((res.tables||[]).map(t=>({table:t.table,comment:t.comment,score:t.score,matched:(t.matched||[]).join(' ')})),10);
+    } else if(a.tool==='find_value'){
+      h+='<div class="dct-sum">'+escH(res.table)+' · 查找“'+escH(res.keyword)+'” · '+(res.matches||[]).length+' 个取值'+(res.note?' · '+escH(res.note):'')+'</div>'+rowsTable(res.matches,40);
     } else h+=preHtml(JSON.stringify(res,null,2),'json');
     return h;
   }

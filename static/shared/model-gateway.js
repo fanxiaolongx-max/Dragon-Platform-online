@@ -49,15 +49,23 @@ function conversation(owner,fresh,fn,{signal,onState,onDiagnostic}={}){
    signal?.throwIfAborted();
    const messages=[...thread.messages,{role:'user',content:String(prompt)}];
    onDiagnostic?.({kind:'model',stage:'model_request',protocol:selected.protocol,model:selected.model});
+   const started=Date.now(),who=owner==='air'?'AI 月报':owner==='panel'?'助理浮窗':owner;
+   // 交互日志：和 ADC 对话一样记下提问、回答、耗时和失败原因，模型 API 的问题也能回溯
+   const log=(status,title,extra)=>window.OpsLog?.report({kind:'model',status,title,ms:extra.ms??Date.now()-started,detail:{owner,protocol:selected.protocol,model:selected.model,profile:selected.name||undefined,
+    turns:messages.length,promptChars:String(prompt).length,prompt:String(prompt),historyChars:messages.reduce((n,item)=>n+String(item.content||'').length,0),...extra.detail}});
    try{
     const result=await request('/generate',{config_id:selected.id,revision:selected.revision,messages,max_tokens:options.maxOutputTokens,temperature:options.temperature},signal);
     signal?.throwIfAborted();
     thread.messages=[...messages,{role:'assistant',content:result.text}];
     onUpdate?.(result.text);
-    window.OpsLog?.report({kind:'api',title:'模型 API 生成完成',ms:result.ms,detail:{protocol:result.protocol,model:result.model,requestId:result.request_id}});
+    log('ok','模型 API 对话 · '+who+' · '+(result.model||selected.model),{ms:result.ms,detail:{requestId:result.request_id,answerChars:String(result.text||'').length,answer:String(result.text||''),usage:result.usage||undefined}});
     onDiagnostic?.({kind:'model',stage:'model_response',status:'success',protocol:result.protocol,model:result.model,ms:result.ms,requestId:result.request_id});
     return result.text;
-   }catch(error){clear();throw error;}
+   }catch(error){
+    const stopped=error.name==='AbortError';
+    log(stopped?'ok':'error','模型 API 对话 · '+who+' · '+selected.model+(stopped?' · 已停止':' · 失败'),{detail:{error:stopped?undefined:String(error.message||error),httpStatus:error.status||undefined}});
+    clear();throw error;
+   }
   };
   try{signal?.throwIfAborted();return await fn({ask,reset:async()=>clear(),isNew,transport:'model',profile:selected});}
   finally{busy--;if(signal?.aborted)clear();}
