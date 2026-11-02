@@ -182,7 +182,7 @@ class ModelsTests(unittest.IsolatedAsyncioTestCase):
     async def test_disconnect_cancels_pending_upstream_operation(self):
         cancelled = asyncio.Event()
         class Request:
-            async def is_disconnected(self): return True
+            async def receive(self): return {'type': 'http.disconnect'}
         async def operation():
             try: await asyncio.sleep(20)
             finally: cancelled.set()
@@ -211,3 +211,43 @@ class ModelsTests(unittest.IsolatedAsyncioTestCase):
             if 't_ai_model_config' in sql: raise DatabaseError('no such table: t_ai_model_config')
             return [{'id': 'active', 'mode': 'model'}]
         with patch.object(db, 'query_app_schema', partial), self.assertRaises(DatabaseError): await service.listing()
+
+    async def test_real_http_disconnect_through_middleware_cancels_model_task(self):
+        # Polling Request.is_disconnected can fail behind BaseHTTPMiddleware. Use an actual socket.
+        import socket
+        import uvicorn
+        from fastapi import FastAPI
+        from app.routers.ai_models import router
+        from app.routers.environment import guard
+        from app.core.exceptions import register_exception_handlers
+        app = FastAPI()
+        register_exception_handlers(app)
+        app.middleware('http')(guard)
+        @app.middleware('http')
+        async def outer(request, call_next): return await call_next(request)
+        app.include_router(router, prefix='/api')
+        entered, cancelled = asyncio.Event(), asyncio.Event()
+        async def waiting(payload):
+            entered.set()
+            try: await asyncio.sleep(30)
+            finally: cancelled.set()
+        sock = socket.socket()
+        sock.bind(('127.0.0.1', 0))
+        sock.listen()
+        port = sock.getsockname()[1]
+        server = uvicorn.Server(uvicorn.Config(app, log_level='error', lifespan='off', timeout_graceful_shutdown=1))
+        running = asyncio.create_task(server.serve(sockets=[sock]))
+        try:
+            async def ready():
+                while not server.started: await asyncio.sleep(.01)
+            await asyncio.wait_for(ready(), 3)
+            with patch('app.services.ai_models.test_model', waiting):
+                async with httpx.AsyncClient(trust_env=False) as client:
+                    pending = asyncio.create_task(client.post(f'http://127.0.0.1:{port}/api/ai-models/test', json={}))
+                    await asyncio.wait_for(entered.wait(), 3)
+                    pending.cancel()
+                    await asyncio.gather(pending, return_exceptions=True)
+                    await asyncio.wait_for(cancelled.wait(), 2)
+        finally:
+            server.should_exit = True
+            await asyncio.wait_for(running, 5)

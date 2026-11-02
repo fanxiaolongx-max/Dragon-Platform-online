@@ -29,8 +29,11 @@ async def connected(request, operation):
     task = asyncio.create_task(operation)
     async def watch():
         while True:
-            if await request.is_disconnected(): return
-            await asyncio.sleep(0.1)
+            # The JSON body has already been consumed by FastAPI. Await the ASGI
+            # disconnect event directly: is_disconnected() polling can lose it
+            # behind Starlette's BaseHTTPMiddleware receive channel.
+            message = await request.receive()
+            if message['type'] == 'http.disconnect': return
     watcher = asyncio.create_task(watch())
     try:
         done, _ = await asyncio.wait((task, watcher), return_when=asyncio.FIRST_COMPLETED)
