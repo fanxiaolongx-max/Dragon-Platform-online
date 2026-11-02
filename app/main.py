@@ -2,7 +2,7 @@
 """应用入口 - 运营数字人写报告服务"""
 import os
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -88,7 +88,7 @@ def create_app() -> FastAPI:
     # 挂载静态文件目录（基座要求 static/ 可访问）
     if os.path.isdir(STATIC_DIR):
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-        for sub in ("css", "js", "vendor", "air", "shared"):
+        for sub in ("css", "js", "vendor", "air", "shared", "data"):
             sub_dir = os.path.join(STATIC_DIR, sub)
             if os.path.isdir(sub_dir):
                 app.mount(f"/{sub}", StaticFiles(directory=sub_dir), name=sub)
@@ -133,6 +133,22 @@ def create_app() -> FastAPI:
     @app.get("/api-test", response_class=HTMLResponse, include_in_schema=False)
     async def dev_page():
         return FileResponse(dev_file)
+
+    @app.get("/api/download/asset-guide", include_in_schema=False)
+    async def download_asset_guide():
+        file_path = os.path.join(STATIC_DIR, "data", "AIOps数仓业务数据资产与指标全景指南.xlsx")
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="数据资产指南文件不存在")
+        from urllib.parse import quote
+        filename = "AIOps数仓业务数据资产与指标全景指南.xlsx"
+        return FileResponse(
+            file_path,
+            filename=filename,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"
+            }
+        )
 
     return app
 
