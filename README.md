@@ -9,7 +9,7 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.8.1`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.8.2`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
@@ -535,6 +535,13 @@ flowchart TD
 
 隐藏指令中的总结长度、总览展示位置和章节样式改写不再无条件覆盖格子要求；用户指定左右并排时，窄格子的默认纵向堆叠不强制覆盖。空间不足时仍保留布局保护。历史月报不批量重写，原有问题格子需重新生成最终提示词后运行。
 
+
+### 1.8.2：AI 回复的生成速度统计
+
+- AI 月报各类对话（格子、字段、章节样式、整体风格）的 AI 回复下方，复制按钮旁显示本次生成速度：最低 / 平均 / 最高 tok/s，多轮时附轮次；悬停查看 token 与用时。平均速度按总输出 token ÷ 总耗时计算。
+- ADC 不返回用量，token 按文字估算（中文约 1.6 字 / token），耗时为整轮往返时间（含等待），数字偏保守；模型 API 方式同样按文字估算。
+- 统计随月报保存；「调用记录 → 导出日志」的 JSON 开头新增 `modelStats`：每条回复一行（问题、轮次、token、最低/平均/最高 tok/s、用时）及每轮明细。
+- 与 Dragon Platform 的 AI 月报、Dragon Claw 对话使用同一套口径。
 
 ### 1.8.1：月报格子左右布局
 

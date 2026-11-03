@@ -222,7 +222,7 @@ function createClient(conv,signal,observe,stats=null){
             signal?.throwIfAborted();
             let toolCalls=[];
             if(tools)toolCalls=toolCallsOf(text,tools,started);
-            stats?.round(Date.now()-started,toolCalls.map(call=>call.name),prompt.length,text.length);
+            stats?.round(Date.now()-started,toolCalls.map(call=>call.name),prompt.length,text.length,undefined,{prompt,text});
             Object.assign(entry,{ms:Date.now()-started,reply:clip(text),toolCalls:toolCalls.length?clip(toolCalls.map(call=>({name:call.name,args:call.args}))):'',...(conv.transport!=='model'&&window.ADCChat?.lastRun?{adcRun:clean(window.ADCChat.lastRun)}:{})});
             Object.assign(entry,{stage:'model_done',status:'success'});publish(entry);
             return {text:toolCalls.length?'':text,toolCalls};
@@ -870,7 +870,7 @@ async function post(path,body={}, {signal,onState,onEvent}={}){
     if(!window.DragonClaw?.ready())throw fail(503,'AI 对话不可用：需要在数字人云端（与 ADC 同源）打开本页面，或在 Dragon Platform 中托管运行。');
     return window.DragonClaw.conversation('air',true,async conv=>{
         traceStore=store;stats.transport=conv.transport==='model'?'model':'adc';stats.model=conv.profile?.model||'';
-        try{const reply=await handler(input,createClient(conv,signal,store.observe,stats));signal?.throwIfAborted();stats.report(null,reply);return debug&&reply&&typeof reply==='object'?{...reply,_trace:store.finish()}:reply;}
+        try{const reply=withRounds(await handler(input,createClient(conv,signal,store.observe,stats)),stats);signal?.throwIfAborted();stats.report(null,reply);return debug&&reply&&typeof reply==='object'?{...reply,_trace:store.finish()}:reply;}
         catch(error){stats.report(error);if(debug)error.body={_trace:store.finish()};throw error;}
         finally{traceStore=null;}
     },{signal,onState,onDiagnostic:store.observe}).then(reply=>debug&&reply&&typeof reply==='object'?{...reply,_trace:store.finish()}:reply).catch(error=>{stats.report(error);if(debug)error.body={...(error.body||{}),_trace:store.finish()};throw error;});
@@ -878,9 +878,23 @@ async function post(path,body={}, {signal,onState,onEvent}={}){
 /* 交互日志：每次 AI 操作记一条汇总（模型往返几轮、每轮耗时和调用了哪些工具、工具耗时与缓存命中、页面预取），
    用来看一次提问慢在哪里；单次 ADC / 模型 API 往返和基座查询另有逐条日志。 */
 const OP_NAMES={'/cell/chat':'格子对话','/cell/prompt':'整理格子提示词','/cell/compile':'生成格子','/cell/narrative':'写格子总结','/cell/gist':'格子摘要','/cell/text-edit':'文字修改','/cell/restyle':'按章节样式重排','/report/chat':'整体风格对话','/report/prompt':'整理整体风格','/report/theme':'生成主题','/chapter/chat':'章节样式对话','/chapter/prompt':'整理章节样式','/template/field':'生成开头字段','/template/field/chat':'开头字段对话','/template/field/prompt':'整理字段提示词','/debug/explain':'解读调试记录'};
+function estimateTokens(text){
+    const value=String(text||'');if(!value)return 0;
+    const cjk=(value.match(/[\u3400-\u9fff\uf900-\ufaff]/g)||[]).length;
+    return Math.max(1,Math.round(cjk/1.6+(value.length-cjk)/4));
+}
+// 本次操作里每轮模型往返的耗时与速度（与 Dragon Platform 的 _rounds 同一格式）：页面显示在 AI 回复下方，导出日志开头列统计表
+function roundsOf(stats){
+    return stats.rounds.filter(round=>!round.error&&round.outputTokens>0).map((round,index)=>({index:index+1,model:stats.model||(stats.transport==='model'?'模型 API':'ADC'),inputTokens:round.inputTokens||0,outputTokens:round.outputTokens,estimated:true,ms:round.ms,ttftMs:null,generationMs:Math.max(1,round.ms),tps:Math.round(round.outputTokens/(Math.max(1,round.ms)/1000)*10)/10,at:round.at||''}));
+}
+function withRounds(reply,stats){
+    const rounds=roundsOf(stats);
+    return reply&&typeof reply==='object'&&!Array.isArray(reply)&&rounds.length?{...reply,_rounds:rounds}:reply;
+}
 function opStats(rel){
     const stats={rounds:[],tools:[],started:Date.now(),transport:'',model:'',reported:false};
-    stats.round=(ms,tools,promptChars,answerChars,error)=>stats.rounds.push({ms,tools,promptChars,answerChars,...(error?{error}:{})});
+    // 输入 / 输出 token 按文字估算（ADC 不返回用量；中文约 1.6 字 / token，其他约 4 字符 / token），用于回复下方的生成速度
+    stats.round=(ms,tools,promptChars,answerChars,error,texts)=>stats.rounds.push({ms,tools,promptChars,answerChars,...(texts?{inputTokens:estimateTokens(texts.prompt),outputTokens:estimateTokens(texts.text),at:new Date(Date.now()-ms).toISOString()}:{}),...(error?{error}:{})});
     stats.tool=(name,ms,cached,error,prefetch)=>stats.tools.push({name,ms,...(cached?{cached:true}:{}),...(error?{error:String(error).slice(0,300)}:{}),...(prefetch?{prefetch:true}:{})});
     stats.report=(error,reply)=>{
         if(stats.reported||!window.OpsLog)return;stats.reported=true;
