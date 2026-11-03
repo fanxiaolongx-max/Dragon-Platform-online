@@ -9,7 +9,7 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.8.2`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.8.3`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
@@ -549,3 +549,9 @@ flowchart TD
 - 小格子布局记录保留行信息；明确要求图表与表格左右并排时，检查是否处于同一行，生成错误时要求 AI 修正。
 - 并排空间不足时精简表头、列数和图表边距，不再自动改成上下布局；仍无法满足要求时报告失败。
 - 更新应用并刷新页面后，对已有格子重新发送布局要求即可生效；不会重写历史月报或业务数据库。
+
+
+### 1.8.3：修复发布浏览器回归
+
+- ADC 接口新增生成速度统计 `_rounds` 后，浏览器测试分别验证业务结果和统计信息，避免旧的完整对象断言误报失败。
+- 保留 1.8.2 的生成速度展示与日志导出功能，无业务数据库变更。

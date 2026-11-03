@@ -177,8 +177,18 @@ async function realAdcFlow(page,origin){
   try{
     await page.goto(origin+'/');await page.locator('#airReport h1').waitFor();
     const gist=()=>page.evaluate(()=>window.API.post('/api/ai-report/cell/gist',{month:'2026-10',items:[{id:'c1',title:'t',prompt:'p',result:{n:1}}]}));
-    assert.deepEqual(await gist(),{gists:{c1:'要点'}});
-    assert.deepEqual(await gist(),{gists:{c1:'要点'}});
+    for(let i=0;i<2;i++){
+      const {_rounds,...payload}=await gist();
+      assert.deepEqual(payload,{gists:{c1:'要点'}});
+      assert.equal(_rounds.length,1,'Each ADC action returns its own model-round statistics');
+      const round=_rounds[0];
+      assert.equal(round.index,1);assert.equal(round.model,'ADC');assert.equal(round.estimated,true);
+      assert(round.inputTokens>0&&round.outputTokens>0);
+      assert(Number.isFinite(round.ms)&&round.ms>=0);
+      assert(Number.isFinite(round.generationMs)&&round.generationMs>=1);
+      assert(Number.isFinite(round.tps)&&round.tps>0);
+      assert.equal(round.ttftMs,null);assert(Number.isFinite(Date.parse(round.at)));
+    }
     const asks=await page.evaluate(()=>window.__adcAsks),calls=await page.evaluate(()=>window.__adcNewSession);
     assert.equal(calls,0,'Real ADC sessions are never created through the newSession API');
     assert.equal(asks.length,2);
