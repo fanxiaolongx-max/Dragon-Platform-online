@@ -62,7 +62,9 @@ const pad=n=>String(n).padStart(2,'0');
 function monthValues(month,offset=0){
     const [y,m]=month.split('-').map(Number),at=k=>{const total=y*12+m-1+offset+k;return {y:Math.floor(total/12),m:total%12+1};};
     const cur=at(0),next=at(1),prev=at(-1),last=new Date(Date.UTC(cur.y,cur.m,0)).getUTCDate();
-    return {month:`${cur.y}-${pad(cur.m)}`,month_start:`${cur.y}-${pad(cur.m)}-01`,month_end:`${cur.y}-${pad(cur.m)}-${pad(last)}`,next_month_start:`${next.y}-${pad(next.m)}-01`,prev_month:`${prev.y}-${pad(prev.m)}`,yyyymm:`${cur.y}${pad(cur.m)}`,year:String(cur.y),month_num:String(cur.m)};
+    const history={};
+    for(let n=1;n<=120;n++){const date=at(-n);history[`prev_${n}_month`]=`${date.y}-${pad(date.m)}`;history[`prev_${n}_month_start`]=`${date.y}-${pad(date.m)}-01`;history[`prev_${n}_yyyymm`]=`${date.y}${pad(date.m)}`;}
+    return {...history,month:`${cur.y}-${pad(cur.m)}`,month_start:`${cur.y}-${pad(cur.m)}-01`,month_end:`${cur.y}-${pad(cur.m)}-${pad(last)}`,next_month_start:`${next.y}-${pad(next.m)}-01`,prev_month:`${prev.y}-${pad(prev.m)}`,yyyymm:`${cur.y}${pad(cur.m)}`,year:String(cur.y),month_num:String(cur.m)};
 }
 const resolveSql=(sql,month,offset=0)=>{const values=monthValues(month,offset);return String(sql||'').replace(/\{\{\s*(\w+)\s*\}\}/g,(match,key)=>key in values?values[key]:match);};
 
@@ -72,6 +74,7 @@ const SQL_RECIPE_GUIDE=`配方格式：
   {id:'s1', kind:'sql', label:'这份数据的中文说明', source:'netcare' 或 'app', sql:'SELECT …', monthOffset:0}
   {id:'r1', kind:'report', label:'说明', include:'outline' 或 'results', chapters:['章节 id，可省略表示全部']}（这份月报本身：做快速跳转导航用 outline；做总览、汇总其他格子用 results）
   SQL 来源每月由服务端按报告月份执行：只能是单条只读 SELECT / WITH；时间条件一律用占位符，不要写死年月：{{month}}=YYYY-MM、{{yyyymm}}=YYYYMM、{{month_start}}=当月 1 日（YYYY-MM-01）、{{month_end}}=当月最后一天、{{next_month_start}}=下月 1 日、{{prev_month}}=上个月 YYYY-MM、{{year}}、{{month_num}}（例如 WHERE period_month = '{{month}}'，或 WHERE created_time >= '{{month_start}}' AND created_time < '{{next_month_start}}'）。占位符的写法要和表里时间字段的实际格式一致（先用 query 看样本）。
+  多月窗口由程序计算：{{prev_N_month}}=前 N 个月 YYYY-MM、{{prev_N_month_start}}=前 N 个月 1 日、{{prev_N_yyyymm}}=前 N 个月 YYYYMM（N 为 1–120）。包含报告月的近 6 个月必须从 {{prev_5_month}} 到 {{month}}，不是 {{prev_month}}；日期列用 >= '{{prev_5_month_start}}' AND < '{{next_month_start}}'。不要用数据库特定的日期函数自行计算。
   monthOffset 为 0 表示报告月份，-1 表示上个月（占位符整体平移；做环比时用两个来源，写同样的 SQL）。
   尽量在 SQL 里完成筛选、分组和聚合（COUNT/SUM/GROUP BY），每个来源最多返回 1000 行；明细只选需要的列，并用 AS 起简短的英文别名。输出配方前，先用 query 工具把每条 SQL 试跑一次，确认表名、列名和取值都对。
 - compute：字符串，必须定义 function compute(input){...}。input[sourceId] 为 {month, source, label, sql, headers, rows:[{列名:值}], truncated}；月报内容源为 {month, title, chapters:[{id, no:'01', numbered, title, anchor, cells:[{id, anchor, title, summary, result}]}]}（numbered 为 false 的是不编号的章节，比如总览、导航，它的 no 为空），summary 和 result 只在 include 为 'results' 时有，是其他格子已经算好的总结和结果，不含当前格子）；某个来源本月执行出错时为 null，必须处理并返回 {missing:true, message:'...'}。input.$month 是报告月份。返回 JSON 可序列化的结果。列值可能是字符串，计算前转数字。
@@ -489,10 +492,11 @@ async function runWithTools(client, { system, month, messages, accept, fallback,
 // Conversation turn: answers data questions or asks; never compiles a recipe.
 const styleLine = style => style ? `月报整体风格默认要求（格子已确认的局部例外优先）：\n${String(style).slice(0, 800)}` : '';
 
-async function cellTurn(client, { month, prompt, chat, message, style = '', outline = null }) {
+async function cellTurn(client, { month, prompt, chat, message, style = '', outline = null, recipe = null }) {
     const recent = historyMessages(chat).slice(-4).map(item => item.content).join('\n');
     const facts = await grounding([message, prompt, recent].filter(Boolean).join('\n'), month, { outline, signal: client.signal, observe: client.observe, stats: client.stats });
-    const context = [`报告月份：${month}`, prompt ? `这个格子当前的最终提示词：\n${prompt}` : '这个格子还没有最终提示词', styleLine(style), facts].filter(Boolean).join('\n');
+    const currentSql = recipe ? (recipe.sources || []).filter(s => s.kind === 'sql').slice(0,8).map(s => `${s.id}: ${resolveSql(s.sql, month, s.monthOffset || 0)}`).join('\n').slice(0,12000) : '';
+    const context = [currentSql ? `当前已保存配方实际执行的 SQL（临时 query 成功不代表配方已修改；先检查这里的时间范围，不要无依据归咎图表）：\n${currentSql}` : '', `报告月份：${month}`, prompt ? `这个格子当前的最终提示词：\n${prompt}` : '这个格子还没有最终提示词', styleLine(style), facts].filter(Boolean).join('\n');
     const recentChat = historyMessages(chat).slice(-6);
     const messages = [{ role: 'user', content: context }, { role: 'model', content: '好的。' }, ...recentChat, { role: 'user', content: message }];
     return runWithTools(client, { system: CHAT_PROMPT, month, messages, context: { outline }, fallback: { type: 'answer', text: '抱歉，我这次没能整理出回答，请换个说法再试一次。' }, accept: (reply, toolLog) => {
@@ -511,6 +515,34 @@ function tidyRecipe(recipe) {
     return { ...recipe, compute: tidy(recipe.compute), render: tidy(recipe.render) };
 }
 
+// Only check explicit, unambiguous windows and simple same-column month bounds.
+// Sparse rows are valid: validate SQL scope, never require N returned data points.
+function monthWindowProblems(prompt, sources, month) {
+    const counts = [...String(prompt).matchAll(/(?:近|最近|过去)\s*(\d+)\s*个?月|往前推?\s*(\d+)\s*个?月/g)]
+        .map(m => m[1] ? Number(m[1]) : Number(m[2]) + 1);
+    const unique = [...new Set(counts)];
+    if (unique.length !== 1 || unique[0] < 2 || unique[0] > 121) return [];
+    const n = unique[0], expected = monthValues(month, 1-n).month;
+    const problems = [];
+    for (const source of sources.filter(s => s.kind === 'sql')) {
+        const sql = resolveSql(source.sql, month, source.monthOffset || 0);
+        const bounds = new Map();
+        // Exclude comments and expressions inside SQL strings from predicate matching.
+        const masked = sql.replace(/'(?:''|[^'])*'|--[^\n]*|\/\*[\s\S]*?\*\//g, value => /^'\d{4}-\d{2}'$/.test(value) ? value : ' '.repeat(value.length));
+        for (const m of masked.matchAll(/([\w.`]+)\s*(>=|<=|>|<)\s*'(\d{4}-\d{2})'/g)) {
+            const key = m[1].toLowerCase(), item = bounds.get(key) || {};
+            item[m[2]] = m[3]; bounds.set(key, item);
+        }
+        for (const m of masked.matchAll(/([\w.`]+)\s+BETWEEN\s*'(\d{4}-\d{2})'\s+AND\s*'(\d{4}-\d{2})'/gi)) bounds.set(m[1].toLowerCase(), {'>=': m[2], '<=': m[3]});
+        for (const item of bounds.values()) {
+            if (item['<='] === month && item['>='] && item['>='] > expected) {
+                problems.push(`${source.id}：要求含报告月近 ${n} 个月，应从 ${expected} 到 ${month}，最终 SQL 却从 ${item['>=']} 开始。请用 '{{prev_${n-1}_month}}' 到 '{{month}}' 修正最终 sources.sql，再试跑；不要只修改临时查询或声称是图表问题。`);
+            }
+        }
+    }
+    return problems;
+}
+
 // Compiles the confirmed prompt; an error from a previous run is passed back so the model can fix it.
 const recipeSql = recipe => { try { return recipe ? (M.normalizeRecipe(recipe).sources || []).map(source => source.sql || '').join('\n') : ''; } catch (_) { return ''; } };
 async function compileTurn(client, { month, prompt, recipe, error, style = '', outline = null, previousPrompt = '' }) {
@@ -524,6 +556,8 @@ async function compileTurn(client, { month, prompt, recipe, error, style = '', o
             let normalized;
             try { normalized = M.normalizeRecipe(tidyRecipe(reply.recipe)); }
             catch (problem) { return { retry: `配方无效：${problem.message}。请修正后只输出 JSON。` }; }
+            const windows = monthWindowProblems(prompt, normalized.sources, month);
+            if (windows.length) return { retry: windows.join('；') };
             // Made-up sources would only ever show "no data"; send them back while the model can still look them up.
             const unknown = await sqlProblems(month, normalized.sources,client.signal,client.observe);
             if (unknown.length) return { retry: `这些 SQL 来源按报告月份试跑出错：${unknown.join('；')}。请用 list_tables / describe_table 核对表名和列名，用 query 试跑通过后再输出配方；确实找不到数据就回复 ask 说明，不要编造表名或列名。` };
@@ -735,7 +769,7 @@ const AI={
         const {month,prompt='',chat=[],message=''}=body;
         need(M.validMonth(month),'需要有效的报告月份');need(String(message).trim(),'请输入要问的内容');
         const style=String(body.style||'').slice(0,8000);
-        const result=await cellTurn(client,{month,prompt:String(prompt).slice(0,4000),chat,message:String(message).slice(0,6000),style,outline:reportOutline(body.outline)});
+        const result=await cellTurn(client,{month,prompt:String(prompt).slice(0,4000),chat,message:String(message).slice(0,6000),style,outline:reportOutline(body.outline),recipe:body.recipe});
         return body.decided===true?result:checkConflict(client,result,{message,chat,sides:[['这个格子的最终提示词',prompt],['月报整体风格与章节样式提示词',style]]});
     },
     async '/cell/prompt'(body,client){

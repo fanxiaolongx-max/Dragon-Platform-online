@@ -2,6 +2,16 @@
 
 月报工具栏「AI 模型」或「开发者模式 → 工具 → AI 模型配置」可新增、测试、加密保存和切换模型。支持 HTTP/HTTPS 的 OpenAI 兼容、Responses、Claude、Gemini、Ollama 及自定义 POST JSON 文本接口，继续支持 ADC 页面。配置存放在分配的应用库，API Key 和高级配置在服务端使用认证加密，读取时不回显。更新已有应用后需要执行 `db/upgrade.sql`（模拟基座执行 SQLite 对应脚本）；迁移时同时备份独立的加密密钥。详见 [模型配置与部署说明](docs/ai-models.md)。
 
+## 月份窗口与模型兼容防护
+
+需求广场日志 155 中，Qwen 的临时查询取得六个月数据，最终配方却使用 `prev_month` 至 `month`，实际只有两个月；GLM 最终使用了正确范围。这份日志能确认配方错误，不能据此判断整个模型的可靠性。
+
+- SQL 支持 `{{prev_N_month}}`、`{{prev_N_month_start}}`、`{{prev_N_yyyymm}}`（N 为 1–120），前后端按报告月和来源的 `monthOffset` 统一计算，避免模型拼接不同数据库的日期函数。
+- 编译时，对明确的数字月份窗口和同列的简单 YYYY-MM 范围条件（`>=` / `<=` 或 `BETWEEN`）检查是否缩短了范围；错误配方进入原有修正循环，不自动改写 SQL。不按返回行数判断月份齐全，业务缺月仍可正常运行；复杂日期表达式、多窗口任务仍需要检查实际查询结果。
+- 格子对话带上当前保存配方按报告月展开的 SQL，区分临时试查和实际执行，避免只根据临时数据断言图表有误。
+
+无需数据库迁移。生产环境更新应用后需重启服务并刷新页面；已有错误格子需重新生成，历史月报不会自动重算。内网真实 Qwen/GLM 仍需复测。
+
 # Dragon-Platform-online · AiOps-Report
 
 [![Python Version](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
@@ -9,7 +19,7 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.8.7`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.8.8`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 

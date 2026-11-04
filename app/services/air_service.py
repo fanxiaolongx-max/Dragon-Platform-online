@@ -433,8 +433,14 @@ def resolve_sql(sql: str, month: str, offset: int = 0) -> str:
 
     def replace(match: re.Match) -> str:
         key = match.group(1)
+        shifted = re.fullmatch(r"prev_([1-9]\d{0,2})_(month_start|month|yyyymm)", key)
+        if shifted and 1 <= int(shifted[1]) <= 120:
+            year, number = _shift(month, offset - int(shifted[1]))
+            if shifted[2] == "yyyymm":
+                return f"{year}{number:02d}"
+            return f"{year}-{number:02d}" + ("-01" if shifted[2] == "month_start" else "")
         if key not in values:
-            raise QueryValidationError(f"未知占位符 {{{{{key}}}}}，可用：{', '.join('{{' + k + '}}' for k in values)}")
+            raise QueryValidationError(f"未知占位符 {{{{{key}}}}}，可用：{', '.join('{{' + k + '}}' for k in values)}；另支持 {{{{prev_N_month}}}}、{{{{prev_N_month_start}}}}、{{{{prev_N_yyyymm}}}}（N=1–120）")
         return values[key]
     return re.sub(r"\{\{\s*(\w+)\s*\}\}", replace, str(sql or ""))
 

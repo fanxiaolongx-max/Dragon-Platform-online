@@ -116,3 +116,33 @@ test('layout requests release obsolete slot constraints in the browser AI backen
  assert.equal(c.AiReportModel.imageUrl('air/logo.png'),'air/logo.png');
  assert.equal(c.AiReportModel.normalize({reportKind:'history'}).reportKind,'history');
 });
+
+test('month windows resolve identically for tools and compilation across year boundaries',()=>{
+ const c=runtime(),b=c.AiReportBackend;
+ assert.equal(b.resolveSql("SELECT '{{prev_5_month}}', '{{prev_5_month_start}}', '{{prev_5_yyyymm}}'",'2026-02'),"SELECT '2025-09', '2025-09-01', '202509'");
+ assert.equal(b.resolveSql("SELECT '{{prev_5_month}}'",'2026-02',-1),"SELECT '2025-08'");
+ assert.equal(b.resolveSql("SELECT '{{prev_121_month}}'",'2026-02'),"SELECT '{{prev_121_month}}'");
+});
+
+test('log 155 regression: successful two-month SQL cannot satisfy a six-month recipe; sparse results remain valid',async()=>{
+ const c=runtime(),prompts=[],runs=[];
+ const make=sql=>({type:'recipe',reply:'完成',recipe:{sources:[{id:'s1',kind:'sql',source:'netcare',sql}],compute:'function compute(input){return input.s1;}',render:'function render(result,kit){return "";}'}});
+ const bad="SELECT period_month, SUM(total) FROM fixture WHERE period_month >= '{{prev_month}}' AND period_month <= '{{month}}' GROUP BY period_month";
+ const good=bad.replace('{{prev_month}}','{{prev_5_month}}');
+ const queue=[make(bad),make(good)];
+ c.fetch=async(url,options)=>{const body=JSON.parse(options.body);if(url.endsWith('/air/run-data')){runs.push(body);return new Response(JSON.stringify({code:0,data:{input:{s1:{rows:[{period_month:'2026-10',total:2}]}},missing:[]}}));}return new Response(JSON.stringify({code:0,data:{result:{tables:[],rows:[]}}}));};
+ c.DragonClaw={ready:()=>true,conversation:async(_o,_f,fn)=>fn({reset:async()=>{},ask:async prompt=>{prompts.push(prompt);return JSON.stringify(queue.shift());}})};
+ const result=await c.API.post('/api/ai-report/cell/compile',{month:'2026-10',prompt:'获取报告月份往前推5个月至报告月份（共6个月）的月度趋势',_debug:true});
+ assert.equal(result.type,'recipe');assert.equal(result.recipe.sources[0].sql,good);
+ assert.equal(prompts.length,2);assert.match(prompts[1],/2026-05/);assert.match(prompts[1],/最终 sources.sql/);
+ assert.equal(runs.length,1,'incorrect scope is rejected before SQL trial, valid sparse data is accepted');
+ assert.ok(result._trace.some(step=>step.kind==='retry'));
+});
+
+test('cell troubleshooting sees saved recipe SQL rather than only temporary query facts',async()=>{
+ const c=runtime(),prompts=[];
+ c.fetch=async()=>new Response(JSON.stringify({code:0,data:{result:{tables:[],rows:[]}}}));
+ c.DragonClaw={ready:()=>true,conversation:async(_o,_f,fn)=>fn({reset:async()=>{},ask:async prompt=>{prompts.push(prompt);return JSON.stringify({type:'answer',text:'实际配方只取两个月'});}})};
+ await c.API.post('/api/ai-report/cell/chat',{month:'2026-10',prompt:'近6个月趋势',message:'为什么只有两个点',recipe:{sources:[{id:'s1',kind:'sql',sql:"SELECT * FROM fixture WHERE period_month >= '{{prev_month}}'"}]}});
+ assert.match(prompts[0],/当前已保存配方实际执行的 SQL/);assert.match(prompts[0],/2026-09/);
+});
