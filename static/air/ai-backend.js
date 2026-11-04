@@ -127,7 +127,7 @@ function remember(tool,args,result){
 const factClip=(text,size)=>text.length>size?text.slice(0,size)+'…':text;
 function compactCols(cols, maxCols=20){
     if(!Array.isArray(cols)) return '';
-    return cols.slice(0, maxCols).map(col=>`${col.field}${col.comment?'('+col.comment+')':''}`).join('，');
+    return cols.slice(0, maxCols).map(col=>`${col.field}${col.type?':'+col.type:''}${col.comment?'('+col.comment+')':''}`).join('，');
 }
 function knownFacts(text){
     const low=String(text||'').toLowerCase(),out=[];
@@ -135,7 +135,7 @@ function knownFacts(text){
     for(const item of tables)out.push(factClip(`表 ${item.table} 常用字段：`+compactCols(item.columns, 20),700));
     const names=tables.map(item=>item.table.toLowerCase()),about=sql=>names.some(name=>String(sql).toLowerCase().includes(name));
     for(const item of FACTS.values.filter(v=>names.includes(String(v.table).toLowerCase())).slice(0,2))
-        out.push(factClip(`在 ${item.table} 里查找“${item.keyword}”：`+item.matches.slice(0,3).map(m=>`${m.column}=${m.value}`).join('；'),300));
+        out.push(factClip(`在 ${item.table} 里查找“${item.keyword}”：`+item.matches.slice(0,3).map(m=>`${m.column}=${m.value}${m.rows?'（'+m.rows+' 行）':''}`).join('；'),350));
     for(const item of FACTS.queries.filter(q=>about(q.sql)).slice(0,2))
         out.push(factClip(`试跑通过：${item.sql}`,400));
     return out.join('\n').slice(0,1800);
@@ -143,7 +143,7 @@ function knownFacts(text){
 // 第一轮之前由页面先查好资料放进任务内容：之前查过的表直接带上；没有的话按问题文字推荐候选表并附字段。
 async function grounding(text,month,context){
     const known=knownFacts(text);
-    if(known)return '【预先查到的资料：已查过，可直接使用】\n'+known;
+    if(known)return '【预先查到的资料：前面已经查过，可直接使用】\n'+known;
     if(String(text||'').replace(/\s/g,'').length<4)return '';
     const call={id:'prefetch_'+Date.now(),name:'suggest_tables',args:{text:String(text).slice(0,1000)}};
     const done=await callTool(call,month,{...context,prefetch:true});
@@ -927,7 +927,7 @@ function opStats(rel){
         const avgTps=validRounds.length?Math.round(validRounds.reduce((a,b)=>a+b.outputTokens,0)/(validRounds.reduce((a,b)=>a+b.ms,0)/1000)*10)/10:null;
         const tpsTitle=avgTps?` · ${avgTps} TPS`:'';
         window.OpsLog.report({kind:'ai',status:error&&!stopped?'error':'ok',ms,
-            title:`AI 月报 · ${name}${stopped?' · 已停止':error?' · 失败':''}：${via} 往返 ${stats.rounds.length} 轮${tpsTitle}，工具 ${stats.tools.length} 次${hits?`（缓存命中 ${hits} 次）`:''}，用时 ${(ms/1000).toFixed(1)} 秒`,
+            title:`AI 月报 · ${name}${stopped?' · 已停止':error?' · 失败':''}：${via} 往返 ${stats.rounds.length} 轮，工具 ${stats.tools.length} 次${hits?`（缓存命中 ${hits} 次）`:''}${tpsTitle}，用时 ${(ms/1000).toFixed(1)} 秒`,
             detail:{operation:rel,transport:stats.transport,model:stats.model||undefined,tps:avgTps,rounds:stats.rounds.length,modelMs:sum(stats.rounds),toolCalls:stats.tools.length,toolMs:sum(stats.tools),cacheHits:hits,
                 prefetched:stats.tools.some(item=>item.prefetch)||undefined,replyType:reply&&typeof reply==='object'?reply.type:undefined,
                 perRound:stats.rounds,tools:stats.tools.slice(0,80),error:error&&!stopped?String(error.message||error):undefined}});
