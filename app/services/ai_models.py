@@ -324,7 +324,25 @@ async def invoke(c, messages, system='', max_tokens=None, temperature=None):
         if not text.strip(): raise BusinessError(502, '模型未返回可读取的正文，请检查协议、响应路径或模型拒绝原因')
         for secret in [c['api_key'], *c['headers'].values()]:
             if secret: text = text.replace(secret, '[REDACTED]')
-        return {'text': text, 'ms': round((time.monotonic() - started) * 1000), 'request_id': request_id, 'protocol': c['protocol'], 'model': c['model']}
+        total_ms = round((time.monotonic() - started) * 1000)
+        usage = data.get('usage') or data.get('usageMetadata') or {}
+        comp_tokens = (
+            usage.get('completion_tokens')
+            or usage.get('output_tokens')
+            or usage.get('candidatesTokenCount')
+        )
+        if comp_tokens is None and total_ms > 0 and text:
+            comp_tokens = max(1, round(len(text) / 1.8))
+        tps = round(comp_tokens / (total_ms / 1000), 1) if comp_tokens and total_ms > 0 else None
+        return {
+            'text': text,
+            'ms': total_ms,
+            'request_id': request_id,
+            'protocol': c['protocol'],
+            'model': c['model'],
+            'usage': usage,
+            'tps': tps
+        }
     except httpx.TimeoutException: raise BusinessError(504, '模型请求超时，未自动重试；请检查模型服务或提高超时设置') from None
     except httpx.RequestError: raise BusinessError(502, '无法连接模型服务，请检查地址、HTTP/HTTPS、网络及证书设置') from None
     except (ValueError, KeyError, IndexError, TypeError, AttributeError): raise BusinessError(502, '模型返回格式与所选协议不匹配，请检查协议和响应路径') from None

@@ -3343,14 +3343,14 @@ function logItemHTML(x){
   }else if(x.kind==='ai'){
     const sec=v=>typeof v==='number'?(v/1000).toFixed(1)+' 秒':'';
     body+=logKV([['操作',d.operation],['通道',d.transport==='model'?'模型 API'+(d.model?'（'+d.model+'）':''):d.transport==='adc'?'ADC':d.transport],['模型往返',d.rounds!==undefined?d.rounds+' 轮，共 '+sec(d.modelMs):''],['工具调用',d.toolCalls!==undefined?d.toolCalls+' 次，共 '+sec(d.toolMs)+(d.cacheHits?'，缓存命中 '+d.cacheHits+' 次':''):''],['页面预取资料',d.prefetched?'是':''],['结果',d.replyType]]);
-    if((d.perRound||[]).length) body+='<table class="log-rounds"><thead><tr><th>#</th><th>模型耗时</th><th>这一轮调用的工具</th><th>提问 / 回答字数</th></tr></thead><tbody>'+d.perRound.map((r,i)=>'<tr'+(r.error?' class="bad"':'')+'><td>'+(i+1)+'</td><td>'+sec(r.ms)+'</td><td>'+esc((r.tools||[]).join('、')||(r.error?'出错：'+r.error:'（给出回复）'))+'</td><td>'+(r.promptChars??'')+' / '+(r.answerChars??'')+'</td></tr>').join('')+'</tbody></table>';
+    if((d.perRound||[]).length) body+='<table class="log-rounds"><thead><tr><th>#</th><th>模型耗时</th><th>生成速度</th><th>这一轮调用的工具</th><th>提问 / 回答字数</th></tr></thead><tbody>'+d.perRound.map((r,i)=>'<tr'+(r.error?' class="bad"':'')+'><td>'+(i+1)+'</td><td>'+sec(r.ms)+'</td><td>'+(r.tps?'<b style="color:#4f46e5">'+r.tps+' TPS</b>':'-')+'</td><td>'+esc((r.tools||[]).join('、')||(r.error?'出错：'+r.error:'（给出回复）'))+'</td><td>'+(r.promptChars??'')+' / '+(r.answerChars??'')+'</td></tr>').join('')+'</tbody></table>';
     if((d.tools||[]).length) body+='<div class="hint" style="margin:6px 0 2px">工具明细</div><div class="log-tools">'+d.tools.map(t=>'<span class="'+(t.error?'bad':t.cached?'hit':'')+'">'+esc(t.name)+(t.prefetch?'（预取）':'')+' '+(t.cached?'缓存':esc(t.ms+' ms'))+(t.error?' · '+esc(t.error):'')+'</span>').join('')+'</div>';
   }else if(x.kind==='model'){
-    body+=logKV([['来源',d.owner==='air'?'AI 月报':d.owner==='panel'?'助理浮窗':d.owner],['模型',d.model],['协议',d.protocol],['配置',d.profile],['对话轮数',d.turns],['历史总字数',d.historyChars],['提问字数',d.promptChars],['回答字数',d.answerChars],['HTTP',d.httpStatus],['请求编号',d.requestId]]);
+    body+=logKV([['来源',d.owner==='air'?'AI 月报':d.owner==='panel'?'助理浮窗':d.owner],['模型',d.model],['生成速度',d.tps?d.tps+' TPS':(x.ms>0&&d.answerChars?((d.answerChars/1.8)/(x.ms/1000)).toFixed(1)+' TPS':undefined)],['协议',d.protocol],['配置',d.profile],['对话轮数',d.turns],['历史总字数',d.historyChars],['提问字数',d.promptChars],['回答字数',d.answerChars],['HTTP',d.httpStatus],['请求编号',d.requestId]]);
     if(d.prompt) body+='<div class="hint" style="margin:6px 0 0">提问</div><pre>'+esc(d.prompt)+'</pre>';
     if(d.answer) body+='<div class="hint" style="margin:6px 0 0">回答</div><pre>'+esc(d.answer)+'</pre>';
   }else if(x.kind==='adc'){
-    body+=logKV([['来源',d.owner==='air'?'AI 月报':d.owner==='panel'?'助理浮窗':d.owner],['经内嵌原页面发送',d.viaPage===undefined?'':d.viaPage?'是':'否'],['新建对话',d.newChat?'是（点击原页面「新建对话」）':''],['提问字数',d.promptChars],['回答字数',d.answerChars]]);
+    body+=logKV([['来源',d.owner==='air'?'AI 月报':d.owner==='panel'?'助理浮窗':d.owner],['生成速度',d.tps?d.tps+' TPS':(x.ms>0&&d.answerChars?((d.answerChars/1.8)/(x.ms/1000)).toFixed(1)+' TPS':undefined)],['经内嵌原页面发送',d.viaPage===undefined?'':d.viaPage?'是':'否'],['新建对话',d.newChat?'是（点击原页面「新建对话」）':''],['提问字数',d.promptChars],['回答字数',d.answerChars]]);
     if(d.prompt) body+='<div class="hint" style="margin:6px 0 0">提问</div><pre>'+esc(d.prompt)+'</pre>';
     if(d.answer) body+='<div class="hint" style="margin:6px 0 0">回答</div><pre>'+esc(d.answer)+'</pre>';
     if(d.run) body+='<div class="hint" style="margin:6px 0 0">ADC 流事件摘要</div><pre>'+esc(JSON.stringify(d.run,null,1))+'</pre>';
@@ -3359,13 +3359,15 @@ function logItemHTML(x){
   }
   body+='<details style="margin-top:6px"><summary class="hint" style="cursor:pointer">原始记录</summary><pre>'+esc(JSON.stringify(x,null,1))+'</pre></details>';
   const ms=typeof x.ms==='number'?(x.ms>=1000?(x.ms/1000).toFixed(1)+' s':x.ms+' ms'):'';
+  const tpsVal=d.tps??(x.ms>0&&d.answerChars?Number(((d.answerChars/1.8)/(x.ms/1000)).toFixed(1)):null);
+  const tpsTag=tpsVal?'<span class="lb" style="margin-left:6px;font-size:11px;font-weight:600;color:#4f46e5;background:rgba(99,102,241,0.08);padding:1px 5px;border-radius:4px">'+tpsVal+' TPS</span>':'';
   return '<details class="log-it k-'+esc(x.kind)+' s-'+esc(x.status)+'"'+(x.kind==='tables'&&x===LOGS.find(y=>y.kind==='tables')?' open':'')+'><summary>'
     +'<span class="lt">'+esc(x.at||'')+'</span>'
     +(x.page?'<span class="lb pg-'+esc(x.page)+'">'+esc(LOG_PAGE[x.page]||x.page)+'</span>':'')
     +'<span class="lb">'+esc(LOG_KIND[x.kind]||x.kind)+'</span>'
     +(x.status==='error'?'<span class="lb st-error">失败</span>':'')
     +'<span class="ln" title="'+esc(x.title||'')+'">'+esc(x.title||'')+(x.route?' <span class="hint" style="font-weight:400">· '+esc(x.route)+'</span>':'')+'</span>'
-    +'<span class="lm">'+ms+'</span></summary><div class="log-body">'+body+'</div></details>';
+    +'<span class="lm">'+ms+tpsTag+'</span></summary><div class="log-body">'+body+'</div></details>';
 }
 $('#logReload').onclick=loadLogs;
 ['logRange','logKind','logStatus'].forEach(id=>$('#'+id).addEventListener('change',loadLogs));

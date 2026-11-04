@@ -226,8 +226,10 @@ function createClient(conv,signal,observe,stats=null){
             signal?.throwIfAborted();
             let toolCalls=[];
             if(tools)toolCalls=toolCallsOf(text,tools,started);
-            stats?.round(Date.now()-started,toolCalls.map(call=>call.name),prompt.length,text.length,undefined,{prompt,text});
-            Object.assign(entry,{ms:Date.now()-started,reply:clip(text),toolCalls:toolCalls.length?clip(toolCalls.map(call=>({name:call.name,args:call.args}))):'',...(conv.transport!=='model'&&window.ADCChat?.lastRun?{adcRun:clean(window.ADCChat.lastRun)}:{})});
+            const callMs=Date.now()-started;
+            const callTps=callMs>0&&text?Number((Math.round(text.length/1.8)/(callMs/1000)).toFixed(1)):undefined;
+            stats?.round(callMs,toolCalls.map(call=>call.name),prompt.length,text.length,undefined,{prompt,text});
+            Object.assign(entry,{ms:callMs,tps:callTps,reply:clip(text),toolCalls:toolCalls.length?clip(toolCalls.map(call=>({name:call.name,args:call.args}))):'',...(conv.transport!=='model'&&window.ADCChat?.lastRun?{adcRun:clean(window.ADCChat.lastRun)}:{})});
             Object.assign(entry,{stage:'model_done',status:'success'});publish(entry);
             return {text:toolCalls.length?'':text,toolCalls};
         }catch(error){stats?.round(Date.now()-started,[],prompt.length,0,error.name==='AbortError'?'已停止':error.message);Object.assign(entry,{stage:'failed',status:error.name==='AbortError'?'cancelled':'error',ms:Date.now()-started,error:error.message,...(conv.transport!=='model'&&window.ADCChat?.lastRun?{adcRun:clip(window.ADCChat.lastRun)}:{})});publish(entry);throw error;}
@@ -910,15 +912,23 @@ function withRounds(reply,stats){
 function opStats(rel){
     const stats={rounds:[],tools:[],started:Date.now(),transport:'',model:'',reported:false};
     // 输入 / 输出 token 按文字估算（ADC 不返回用量；中文约 1.6 字 / token，其他约 4 字符 / token），用于回复下方的生成速度
-    stats.round=(ms,tools,promptChars,answerChars,error,texts)=>stats.rounds.push({ms,tools,promptChars,answerChars,...(texts?{inputTokens:estimateTokens(texts.prompt),outputTokens:estimateTokens(texts.text),at:new Date(Date.now()-ms).toISOString()}:{}),...(error?{error}:{})});
+    stats.round=(ms,tools,promptChars,answerChars,error,texts)=>{
+        const inTok=texts?estimateTokens(texts.prompt):(promptChars?Math.round(promptChars/1.8):0);
+        const outTok=texts?estimateTokens(texts.text):(answerChars?Math.round(answerChars/1.8):0);
+        const tps=ms>0&&outTok>0?Math.round((outTok/(ms/1000))*10)/10:null;
+        stats.rounds.push({ms,tools,promptChars,answerChars,tps,inputTokens:inTok,outputTokens:outTok,at:new Date(Date.now()-ms).toISOString(),...(error?{error}:{})});
+    };
     stats.tool=(name,ms,cached,error,prefetch)=>stats.tools.push({name,ms,...(cached?{cached:true}:{}),...(error?{error:String(error).slice(0,300)}:{}),...(prefetch?{prefetch:true}:{})});
     stats.report=(error,reply)=>{
         if(stats.reported||!window.OpsLog)return;stats.reported=true;
         const stopped=error?.name==='AbortError',sum=list=>list.reduce((n,item)=>n+(item.ms||0),0),hits=stats.tools.filter(item=>item.cached).length;
         const ms=Date.now()-stats.started,name=OP_NAMES[rel]||rel,via=stats.transport==='model'?'模型 API'+(stats.model?' '+stats.model:''):'ADC';
+        const validRounds=stats.rounds.filter(r=>r.tps>0);
+        const avgTps=validRounds.length?Math.round(validRounds.reduce((a,b)=>a+b.outputTokens,0)/(validRounds.reduce((a,b)=>a+b.ms,0)/1000)*10)/10:null;
+        const tpsTitle=avgTps?` · ${avgTps} TPS`:'';
         window.OpsLog.report({kind:'ai',status:error&&!stopped?'error':'ok',ms,
-            title:`AI 月报 · ${name}${stopped?' · 已停止':error?' · 失败':''}：${via} 往返 ${stats.rounds.length} 轮，工具 ${stats.tools.length} 次${hits?`（缓存命中 ${hits} 次）`:''}，用时 ${(ms/1000).toFixed(1)} 秒`,
-            detail:{operation:rel,transport:stats.transport,model:stats.model||undefined,rounds:stats.rounds.length,modelMs:sum(stats.rounds),toolCalls:stats.tools.length,toolMs:sum(stats.tools),cacheHits:hits,
+            title:`AI 月报 · ${name}${stopped?' · 已停止':error?' · 失败':''}：${via} 往返 ${stats.rounds.length} 轮${tpsTitle}，工具 ${stats.tools.length} 次${hits?`（缓存命中 ${hits} 次）`:''}，用时 ${(ms/1000).toFixed(1)} 秒`,
+            detail:{operation:rel,transport:stats.transport,model:stats.model||undefined,tps:avgTps,rounds:stats.rounds.length,modelMs:sum(stats.rounds),toolCalls:stats.tools.length,toolMs:sum(stats.tools),cacheHits:hits,
                 prefetched:stats.tools.some(item=>item.prefetch)||undefined,replyType:reply&&typeof reply==='object'?reply.type:undefined,
                 perRound:stats.rounds,tools:stats.tools.slice(0,80),error:error&&!stopped?String(error.message||error):undefined}});
     };
