@@ -9,7 +9,7 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.8.4`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.8.5`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
@@ -562,3 +562,11 @@ flowchart TD
 - 交互日志与对话回复旁自动计算并展示服务端真实生成速度（Tokens Per Second，简写为 `2.7 TPS`）。
 - 提示词与上下文剪枝优化，防止模型达到 4K 上下文上限被截断；增加平衡括号 JSON 容错救赎。
 - 开发者模式日志列表及导出的 JSON 记录中自动注入 `tps` 与生成速度明细。
+
+
+### 1.8.5：多协议响应解析自适应兼容与深度调用日志
+
+- 深度兼容 Qwen3 / DeepSeek 等模型的思考模式（`reasoning_content` / `reasoning` / `thought`），正文为空时自动降级提取，杜绝“协议不匹配”报错。
+- 自动剥离模型输出的 `<think>...</think>` 标签，确保 JSON 解析顺畅。
+- 增加兼容 DashScope / 通义原生 `output.text`、legacy completions `choices[0].text` 以及各厂商 HTTP 200 下的业务错误字典。
+- 扩充模型调用全链路 `[MODEL-INVOKE]` 详细日志（脱敏 URL、Header、Body、耗时、Token 数、TPS、截断原因）。

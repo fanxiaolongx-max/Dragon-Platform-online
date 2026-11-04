@@ -15,6 +15,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from app import db
 from app.config import settings
 from app.core.exceptions import BusinessError, DatabaseError
+from app.core.logger import logger
 from app.utils.sql_helper import format_sql_value as lit
 
 PROTOCOLS = ('openai', 'responses', 'anthropic', 'gemini', 'ollama', 'custom')
@@ -250,6 +251,16 @@ def wire(c, messages, system='', max_tokens=None, temperature=None):
     return url, headers, body
 
 
+def strip_reasoning(text: str) -> str:
+    """剥离模型正文中的思考过程标签（如 <think>...</think>）"""
+    if not text:
+        return ''
+    cleaned = re.sub(r'<\s*think(?:ing)?\b[^>]*>[\s\S]*?<\s*/\s*think(?:ing)?\s*>', '', text, flags=re.I)
+    if '<think' in cleaned.lower():
+        cleaned = re.sub(r'<\s*think(?:ing)?\b[^>]*>[\s\S]*$', '', cleaned, flags=re.I)
+    return cleaned.strip()
+
+
 def extract(c, data):
     p = c['protocol']
     if p == 'responses':
@@ -257,16 +268,90 @@ def extract(c, data):
     if p == 'anthropic': return ''.join(str(x.get('text', '')) for x in data.get('content', []) if x.get('type') == 'text')
     if p == 'gemini': return ''.join(str(x.get('text', '')) for x in (data.get('candidates') or [{}])[0].get('content', {}).get('parts', []) if not x.get('thought'))
     if p == 'ollama': return str(data.get('message', {}).get('content') or '')
-    value = data
-    for part in (c['response_path'] if p == 'custom' else 'choices.0.message.content').split('.'):
-        value = value[int(part)] if isinstance(value, list) and part.isdigit() else value[part]
-    if isinstance(value, list): return ''.join(str(x.get('text', '')) for x in value if isinstance(x, dict))
-    return value if isinstance(value, str) else ''
+
+    # 自定义协议按照用户指定的响应路径提取
+    if p == 'custom' and c.get('response_path'):
+        value = data
+        for part in c['response_path'].split('.'):
+            value = value[int(part)] if isinstance(value, list) and part.isdigit() else value[part]
+        if isinstance(value, list): return ''.join(str(x.get('text', '')) for x in value if isinstance(x, dict))
+        return value if isinstance(value, str) else ''
+
+    # OpenAI / 通用兼容协议多层自适应提取（兼容 Qwen3 / DeepSeek 思考模式与各类模型网关）
+    if isinstance(data, dict):
+        # 1. 错误拦截：某些国产网关在 HTTP 200 下返回业务错误 JSON
+        if 'error' in data and data['error']:
+            err = data['error']
+            msg = err.get('message') if isinstance(err, dict) else str(err)
+            raise BusinessError(502, f"模型服务返回错误：{msg}")
+        if data.get('code') and data.get('code') not in (0, 200, '0', '200') and data.get('message'):
+            raise BusinessError(502, f"模型服务返回错误：{data.get('message')}")
+
+        choices = data.get('choices')
+        if isinstance(choices, list) and len(choices) > 0:
+            first = choices[0] if isinstance(choices[0], dict) else {}
+            msg = first.get('message') if isinstance(first.get('message'), dict) else {}
+
+            # 标准 content 提取
+            content = msg.get('content')
+            if content is not None:
+                if isinstance(content, str) and content.strip():
+                    return strip_reasoning(content)
+                if isinstance(content, list):
+                    joined = ''.join(str(x.get('text', '')) if isinstance(x, dict) else str(x) for x in content)
+                    if joined.strip(): return strip_reasoning(joined)
+
+            # 思考模式兼容：当 content 为空或 null 时，回退提取 reasoning_content / reasoning / thought
+            for rk in ('reasoning_content', 'reasoning', 'thought'):
+                r_val = msg.get(rk)
+                if isinstance(r_val, str) and r_val.strip():
+                    logger.info(f"[MODEL-INVOKE] message.content 为空，从 {rk} 提取正文（长度 {len(r_val)}）")
+                    return strip_reasoning(r_val)
+
+            # completions 接口兼容（choices[0].text）
+            if isinstance(first.get('text'), str) and first['text'].strip():
+                return strip_reasoning(first['text'])
+
+            # delta 流式片段兼容
+            delta = first.get('delta') if isinstance(first.get('delta'), dict) else {}
+            if isinstance(delta.get('content'), str) and delta['content'].strip():
+                return strip_reasoning(delta['content'])
+
+        # DashScope / 通义原生 output 结构兼容
+        output = data.get('output')
+        if isinstance(output, dict):
+            if isinstance(output.get('text'), str) and output['text'].strip():
+                return strip_reasoning(output['text'])
+            o_choices = output.get('choices')
+            if isinstance(o_choices, list) and len(o_choices) > 0:
+                first = o_choices[0] if isinstance(o_choices[0], dict) else {}
+                msg = first.get('message') if isinstance(first.get('message'), dict) else {}
+                if isinstance(msg.get('content'), str) and msg['content'].strip():
+                    return strip_reasoning(msg['content'])
+
+        # 顶层通用字段兜底
+        for k in ('text', 'response', 'answer', 'result'):
+            if isinstance(data.get(k), str) and data[k].strip():
+                return strip_reasoning(data[k])
+
+    return ''
 
 
 async def invoke(c, messages, system='', max_tokens=None, temperature=None):
     url, headers, body = wire(c, messages, system, max_tokens, temperature)
     started, request_id = time.monotonic(), uuid.uuid4().hex
+
+    # ── 日志：请求阶段（脱敏） ──
+    safe_headers = dict(headers)
+    for hk in ('Authorization', 'x-api-key', c.get('auth_header', '')):
+        if hk in safe_headers and safe_headers[hk]:
+            safe_headers[hk] = safe_headers[hk][:12] + '...[REDACTED]'
+    logger.info(f"[MODEL-INVOKE] request_id={request_id} protocol={c['protocol']} model={c['model']}")
+    logger.info(f"[MODEL-INVOKE] URL: {url}")
+    logger.info(f"[MODEL-INVOKE] headers(脱敏): {json.dumps(safe_headers, ensure_ascii=False)}")
+    logger.info(f"[MODEL-INVOKE] body: {json.dumps(body, ensure_ascii=False)}")
+    logger.info(f"[MODEL-INVOKE] max_tokens={body.get('max_tokens') or body.get('max_output_tokens') or body.get('maxOutputTokens') or body.get('options', {}).get('num_predict')}")
+
     try:
         # Dedicated client: do not inherit the base client's identity headers, cookies, TLS policy, or retries.
         async with httpx.AsyncClient(timeout=c['timeout'], verify=c['verify_ssl'], trust_env=False, follow_redirects=False) as client:
@@ -281,14 +366,22 @@ async def invoke(c, messages, system='', max_tokens=None, temperature=None):
                     hint = {401: '认证失败，请检查 API Key 和认证方式', 403: '无权调用此模型', 404: '模型或接口路径不存在', 429: '模型限流或额度不足'}.get(status, '模型服务返回错误')
                     raise BusinessError(status, hint + f'（HTTP {status}，请求编号 {request_id}）')
                 data = json.loads(b''.join(chunks))
+
+        # ── 日志：响应阶段 ──
+        ended = time.monotonic()
+        total_ms = round((ended - started) * 1000)
+        logger.info(f"[MODEL-INVOKE] response status={status} elapsed_ms={total_ms} body: {json.dumps(data, ensure_ascii=False)}")
         text = extract(c, data)
+        logger.info(f"[MODEL-INVOKE] extracted text (len={len(text)}): {text[:500]}")
+
         # Reject incomplete responses instead of saving truncated recipes as successful results.
-        truncated = (
-            data.get('status') in ('failed', 'incomplete')
-            or data.get('stop_reason') == 'max_tokens'
-            or any(x.get('finish_reason') == 'length' for x in data.get('choices', []))
-            or any(x.get('finishReason') == 'MAX_TOKENS' for x in data.get('candidates', []))
-        )
+        _trunc_status = data.get('status') in ('failed', 'incomplete')
+        _trunc_stop = data.get('stop_reason') == 'max_tokens'
+        _trunc_choices = any(x.get('finish_reason') == 'length' for x in data.get('choices', []))
+        _trunc_gemini = any(x.get('finishReason') == 'MAX_TOKENS' for x in data.get('candidates', []))
+        truncated = _trunc_status or _trunc_stop or _trunc_choices or _trunc_gemini
+        logger.info(f"[MODEL-INVOKE] truncation check: status_hit={_trunc_status} stop_hit={_trunc_stop} choices_hit={_trunc_choices} gemini_hit={_trunc_gemini} => truncated={truncated}")
+
         if truncated:
             # 容错降级：如果模型实际已经输出了合法的完整 JSON 响应（仅末尾空白或说明被截断），则宽容放行避免 502
             salvaged = False
@@ -312,7 +405,7 @@ async def invoke(c, messages, system='', max_tokens=None, temperature=None):
                             if depth == 0:
                                 try:
                                     parsed = json.loads(candidate[start:idx + 1])
-                                    if isinstance(parsed, dict) and any(k in parsed for k in ('type', 'conflict', 'recipe', 'question', 'text', 'tools')):
+                                    if isinstance(parsed, dict) and any(k in parsed for k in ('type', 'conflict', 'recipe', 'question', 'text', 'tools', 'zh')):
                                         text = candidate[start:idx + 1]
                                         salvaged = True
                                         logger.warning(f"模型命中 finish_reason=length，但成功提取出完整 JSON 结构（保留 {len(text)} 字符）")
@@ -321,10 +414,11 @@ async def invoke(c, messages, system='', max_tokens=None, temperature=None):
                                 break
             if not salvaged:
                 raise BusinessError(502, '模型输出达到上限被截断（单次生成触达模型物理上下文或输出上限）。已在提示词端精简上下文，请重试；若依然出现，请在模型服务部署参数中调大 --max-model-len')
+
         if not text.strip(): raise BusinessError(502, '模型未返回可读取的正文，请检查协议、响应路径或模型拒绝原因')
         for secret in [c['api_key'], *c['headers'].values()]:
             if secret: text = text.replace(secret, '[REDACTED]')
-        total_ms = round((time.monotonic() - started) * 1000)
+
         usage = data.get('usage') or data.get('usageMetadata') or {}
         comp_tokens = (
             usage.get('completion_tokens')
@@ -334,6 +428,8 @@ async def invoke(c, messages, system='', max_tokens=None, temperature=None):
         if comp_tokens is None and total_ms > 0 and text:
             comp_tokens = max(1, round(len(text) / 1.8))
         tps = round(comp_tokens / (total_ms / 1000), 1) if comp_tokens and total_ms > 0 else None
+        logger.info(f"[MODEL-INVOKE] total_ms={total_ms} comp_tokens={comp_tokens} tps={tps}")
+
         return {
             'text': text,
             'ms': total_ms,
@@ -344,8 +440,10 @@ async def invoke(c, messages, system='', max_tokens=None, temperature=None):
             'tps': tps
         }
     except httpx.TimeoutException: raise BusinessError(504, '模型请求超时，未自动重试；请检查模型服务或提高超时设置') from None
-    except httpx.RequestError: raise BusinessError(502, '无法连接模型服务，请检查地址、HTTP/HTTPS、网络及证书设置') from None
-    except (ValueError, KeyError, IndexError, TypeError, AttributeError): raise BusinessError(502, '模型返回格式与所选协议不匹配，请检查协议和响应路径') from None
+    except httpx.RequestError as exc: raise BusinessError(502, f'无法连接模型服务（{exc}），请检查地址、HTTP/HTTPS、网络及证书设置') from None
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
+        logger.error(f"[MODEL-INVOKE] 响应格式解析失败: {type(exc).__name__}: {exc}")
+        raise BusinessError(502, f'模型返回格式与所选协议不匹配（{type(exc).__name__}: {exc}），请检查协议和响应路径') from None
 
 
 async def generate(payload):

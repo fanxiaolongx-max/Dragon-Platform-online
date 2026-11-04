@@ -190,6 +190,35 @@ class ModelsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(error.exception.code, 499)
         self.assertTrue(cancelled.is_set())
 
+    async def test_strip_reasoning_and_reasoning_content_extraction(self):
+        # 1. strip_reasoning
+        self.assertEqual(service.strip_reasoning('<think>Thinking hard...</think>Final result'), 'Final result')
+        self.assertEqual(service.strip_reasoning('<thinking>Pondering...</thinking>{"zh":"ok"}'), '{"zh":"ok"}')
+        self.assertEqual(service.strip_reasoning('Unclosed <think>Still thinking'), 'Unclosed')
+        self.assertEqual(service.strip_reasoning('<think>Still thinking only'), '')
+
+        # 2. extraction from choices[0].message.content
+        cfg = {'protocol': 'openai', 'model': 'qwen38'}
+        normal = {'choices': [{'message': {'content': '{"zh":"很好","en":"good"}'}}]}
+        self.assertEqual(service.extract(cfg, normal), '{"zh":"很好","en":"good"}')
+
+        # 3. extraction fallback to reasoning_content when content is null/empty
+        reasoning_only = {'choices': [{'message': {'content': None, 'reasoning_content': '{"zh":"从思考中提取","en":"from thinking"}'}}]}
+        self.assertEqual(service.extract(cfg, reasoning_only), '{"zh":"从思考中提取","en":"from thinking"}')
+
+        # 4. extraction with think tags in content
+        with_think = {'choices': [{'message': {'content': '<think>analysis</think>{"zh":"已剥离思考"}'}}]}
+        self.assertEqual(service.extract(cfg, with_think), '{"zh":"已剥离思考"}')
+
+        # 5. extraction handles gateway errors
+        err_resp = {'error': {'message': 'Quota exceeded'}}
+        with self.assertRaisesRegex(BusinessError, 'Quota exceeded'):
+            service.extract(cfg, err_resp)
+
+        # 6. legacy choices[0].text
+        legacy_resp = {'choices': [{'text': 'Legacy completion output'}]}
+        self.assertEqual(service.extract(cfg, legacy_resp), 'Legacy completion output')
+
     async def test_migration_idempotence_and_existing_report_preservation(self):
         self.connection.execute("INSERT INTO t_report_template(name,title) VALUES('existing','keep me')")
         for _ in range(2): self.connection.executescript((ROOT / 'db/upgrade.sqlite.sql').read_text())
