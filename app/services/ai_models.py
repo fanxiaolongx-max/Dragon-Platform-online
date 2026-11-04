@@ -283,8 +283,44 @@ async def invoke(c, messages, system='', max_tokens=None, temperature=None):
                 data = json.loads(b''.join(chunks))
         text = extract(c, data)
         # Reject incomplete responses instead of saving truncated recipes as successful results.
-        if data.get('status') in ('failed', 'incomplete') or data.get('stop_reason') == 'max_tokens' or any(x.get('finish_reason') == 'length' for x in data.get('choices', [])) or any(x.get('finishReason') == 'MAX_TOKENS' for x in data.get('candidates', [])):
-            raise BusinessError(502, '模型输出被截断，请提高输出上限后重试')
+        truncated = (
+            data.get('status') in ('failed', 'incomplete')
+            or data.get('stop_reason') == 'max_tokens'
+            or any(x.get('finish_reason') == 'length' for x in data.get('choices', []))
+            or any(x.get('finishReason') == 'MAX_TOKENS' for x in data.get('candidates', []))
+        )
+        if truncated:
+            # 容错降级：如果模型实际已经输出了合法的完整 JSON 响应（仅末尾空白或说明被截断），则宽容放行避免 502
+            salvaged = False
+            raw_text = text.strip()
+            if raw_text:
+                candidate = re.sub(r'^```(?:json)?\s*|\s*```$', '', raw_text).strip()
+                start = candidate.find('{')
+                if start >= 0:
+                    depth, in_str, esc = 0, False, False
+                    for idx in range(start, len(candidate)):
+                        ch = candidate[idx]
+                        if in_str:
+                            if esc: esc = False
+                            elif ch == '\\': esc = True
+                            elif ch == '"': in_str = False
+                            continue
+                        if ch == '"': in_str = True
+                        elif ch == '{': depth += 1
+                        elif ch == '}':
+                            depth -= 1
+                            if depth == 0:
+                                try:
+                                    parsed = json.loads(candidate[start:idx + 1])
+                                    if isinstance(parsed, dict) and any(k in parsed for k in ('type', 'conflict', 'recipe', 'question', 'text', 'tools')):
+                                        text = candidate[start:idx + 1]
+                                        salvaged = True
+                                        logger.warning(f"模型命中 finish_reason=length，但成功提取出完整 JSON 结构（保留 {len(text)} 字符）")
+                                except Exception:
+                                    pass
+                                break
+            if not salvaged:
+                raise BusinessError(502, '模型输出达到上限被截断（单次生成触达模型物理上下文或输出上限）。已在提示词端精简上下文，请重试；若依然出现，请在模型服务部署参数中调大 --max-model-len')
         if not text.strip(): raise BusinessError(502, '模型未返回可读取的正文，请检查协议、响应路径或模型拒绝原因')
         for secret in [c['api_key'], *c['headers'].values()]:
             if secret: text = text.replace(secret, '[REDACTED]')

@@ -125,30 +125,34 @@ function remember(tool,args,result){
     if(tool==='query'&&result.sql&&args.source!=='app'){FACTS.queries=[{sql:String(result.sql),rows:result.row_count,sample:(result.rows||[]).slice(0,3)},...FACTS.queries.filter(q=>q.sql!==result.sql)].slice(0,30);}
 }
 const factClip=(text,size)=>text.length>size?text.slice(0,size)+'…':text;
+function compactCols(cols, maxCols=20){
+    if(!Array.isArray(cols)) return '';
+    return cols.slice(0, maxCols).map(col=>`${col.field}${col.comment?'('+col.comment+')':''}`).join('，');
+}
 function knownFacts(text){
     const low=String(text||'').toLowerCase(),out=[];
-    const tables=[...FACTS.tables.values()].filter(item=>low.includes(item.table.toLowerCase())).slice(0,3);
-    for(const item of tables)out.push(factClip(`表 ${item.table} 的字段（已查过）：`+item.columns.map(col=>`${col.field}${col.type?':'+col.type:''}${col.comment?'('+col.comment+')':''}`).join('，'),3500));
+    const tables=[...FACTS.tables.values()].filter(item=>low.includes(item.table.toLowerCase())).slice(0,2);
+    for(const item of tables)out.push(factClip(`表 ${item.table} 常用字段：`+compactCols(item.columns, 20),700));
     const names=tables.map(item=>item.table.toLowerCase()),about=sql=>names.some(name=>String(sql).toLowerCase().includes(name));
-    for(const item of FACTS.values.filter(v=>names.includes(String(v.table).toLowerCase())).slice(0,4))
-        out.push(factClip(`在 ${item.table} 里查找“${item.keyword}”：`+item.matches.map(m=>`${m.column}=${m.value}（${m.rows} 行）`).join('；'),600));
-    for(const item of FACTS.queries.filter(q=>about(q.sql)).slice(0,4))
-        out.push(factClip(`试跑通过（返回 ${item.rows} 行；报告月份已替换成具体值）：${item.sql}；样例：${JSON.stringify(item.sample)}`,900));
-    return out.join('\n').slice(0,9000);
+    for(const item of FACTS.values.filter(v=>names.includes(String(v.table).toLowerCase())).slice(0,2))
+        out.push(factClip(`在 ${item.table} 里查找“${item.keyword}”：`+item.matches.slice(0,3).map(m=>`${m.column}=${m.value}`).join('；'),300));
+    for(const item of FACTS.queries.filter(q=>about(q.sql)).slice(0,2))
+        out.push(factClip(`试跑通过：${item.sql}`,400));
+    return out.join('\n').slice(0,1800);
 }
 // 第一轮之前由页面先查好资料放进任务内容：之前查过的表直接带上；没有的话按问题文字推荐候选表并附字段。
 async function grounding(text,month,context){
     const known=knownFacts(text);
-    if(known)return '【预先查到的资料：前面已经查过，可直接使用，不用再查这些表的字段】\n'+known;
+    if(known)return '【预先查到的资料：已查过，可直接使用】\n'+known;
     if(String(text||'').replace(/\s/g,'').length<4)return '';
-    const call={id:'prefetch_'+Date.now(),name:'suggest_tables',args:{text:String(text).slice(0,4000)}};
+    const call={id:'prefetch_'+Date.now(),name:'suggest_tables',args:{text:String(text).slice(0,1000)}};
     const done=await callTool(call,month,{...context,prefetch:true});
     if(done.abort)throw done.abort;
     const value=done.value;
     if(!value?.tables?.length)return '';
-    const lines=value.tables.map(item=>`- ${item.table}${item.comment?'（'+item.comment+'）':''}${item.module?' 模块：'+item.module:''}${item.empty?' 空表':''}${item.failed?' 最近查询失败 '+item.failed+' 次':''}`);
-    const columns=(value.columns||[]).filter(item=>item.columns).map(item=>factClip(`表 ${item.table} 的字段：`+item.columns.map(col=>`${col.field}${col.type?':'+col.type:''}${col.comment?'('+col.comment+')':''}`).join('，'),3500));
-    return ['【预先查到的资料：页面按问题关键词自动匹配的候选表，可能不完全相关；相关就直接用，不用再 list_tables / describe_table 这些表】',...lines,...columns].join('\n');
+    const lines=value.tables.slice(0,3).map(item=>`- ${item.table}${item.comment?'（'+item.comment+'）':''}${item.module?' 模块：'+item.module:''}`);
+    const columns=(value.columns||[]).filter(item=>item.columns).slice(0,2).map(item=>factClip(`表 ${item.table} 常用字段：`+compactCols(item.columns, 20),700));
+    return ['【预先查到的资料：候选表与常用字段】',...lines,...columns].join('\n').slice(0,1800);
 }
 // 执行一个工具调用：记调试轨迹、统计耗时与缓存命中；出错时把错误交回模型，停止时向上抛。
 async function callTool(call,month,context){
@@ -404,7 +408,18 @@ function parseReplyDetailed(text) {
 }
 const parseReply = text => parseReplyDetailed(text).value;
 
-const historyMessages = chat => M.cell({ chat }).chat.map(item => ({ role: item.role === 'ai' ? 'model' : 'user', content: (item.kind === 'prompt' ? '【最终提示词】' : '') + item.text + (item.choices ? `\n（选项：${item.choices.join(' / ')}）` : '') }));
+const historyMessages = chat => {
+    const list = M.cell({ chat }).chat;
+    return list.map((item, idx) => {
+        // 只有当前等待用户回答的最新一轮才保留 choices，已过期的历史轮次剥离冗余选项，大幅缩减上下文
+        const isLatestTurn = idx >= list.length - 2;
+        const choiceText = (isLatestTurn && item.choices) ? `\n（选项：${item.choices.join(' / ')}）` : '';
+        return {
+            role: item.role === 'ai' ? 'model' : 'user',
+            content: (item.kind === 'prompt' ? '【最终提示词】' : '') + item.text + choiceText
+        };
+    });
+};
 // A requirement the user stated in a cell that fits the whole report, offered for the report-wide prompt.
 const reportRuleOf = reply => {
     const rule = reply?.report_rule || reply?.reportRule, item = String(rule?.item || '').trim();
@@ -431,10 +446,10 @@ const answeringConflict = (chat, message = '') => {
 };
 async function checkConflict(client, result, { message, chat, sides }) {
     if (result?.type !== 'ready' || answeringConflict(chat, message)) return result;
-    const existing = sides.filter(([, text]) => String(text || '').trim()).map(([name, text]) => `【${name}】\n${String(text).slice(0, 5000)}`).join('\n\n');
+    const existing = sides.filter(([, text]) => String(text || '').trim()).map(([name, text]) => `【${name}】\n${String(text).slice(0, 500)}`).join('\n\n').slice(0, 1500);
     if (!existing) return result;
     try {
-        const reply = parseReply((await client.generateChat({ systemInstruction: CONFLICT_CHECK, messages: [{ role: 'user', content: `用户这次的要求：${String(message).slice(0, 3000)}\n\n已有的要求：\n${existing}` }], maxOutputTokens: 800, temperature: 0 })).text);
+        const reply = parseReply((await client.generateChat({ systemInstruction: CONFLICT_CHECK, messages: [{ role: 'user', content: `用户这次的要求：${String(message).slice(0, 1000)}\n\n已有的要求：\n${existing}` }], maxOutputTokens: 600, temperature: 0 })).text);
         if (reply?.conflict === true && reply.question && Array.isArray(reply.choices) && reply.choices.length >= 2) return askResult({ question: reply.question, choices: reply.choices }, result.tools || []);
     } catch (error) { console.warn('[AI Report] conflict check skipped:', error.message); }
     return result;
@@ -470,13 +485,14 @@ async function runWithTools(client, { system, month, messages, accept, fallback,
 }
 
 // Conversation turn: answers data questions or asks; never compiles a recipe.
-const styleLine = style => style ? `月报整体风格默认要求（格子已确认的局部例外优先：【风格与配色】决定样式、配色和语气；其它分类是每个格子生成内容时的通用要求，和默认做法冲突时以这里为准）：\n${style}` : '';
+const styleLine = style => style ? `月报整体风格默认要求（格子已确认的局部例外优先）：\n${String(style).slice(0, 800)}` : '';
 
 async function cellTurn(client, { month, prompt, chat, message, style = '', outline = null }) {
-    const recent = historyMessages(chat).slice(-6).map(item => item.content).join('\n');
+    const recent = historyMessages(chat).slice(-4).map(item => item.content).join('\n');
     const facts = await grounding([message, prompt, recent].filter(Boolean).join('\n'), month, { outline, signal: client.signal, observe: client.observe, stats: client.stats });
     const context = [`报告月份：${month}`, prompt ? `这个格子当前的最终提示词：\n${prompt}` : '这个格子还没有最终提示词', styleLine(style), facts].filter(Boolean).join('\n');
-    const messages = [{ role: 'user', content: context }, { role: 'model', content: '好的。' }, ...historyMessages(chat), { role: 'user', content: message }];
+    const recentChat = historyMessages(chat).slice(-6);
+    const messages = [{ role: 'user', content: context }, { role: 'model', content: '好的。' }, ...recentChat, { role: 'user', content: message }];
     return runWithTools(client, { system: CHAT_PROMPT, month, messages, context: { outline }, fallback: { type: 'answer', text: '抱歉，我这次没能整理出回答，请换个说法再试一次。' }, accept: (reply, toolLog) => {
         if (asksAboutConflict(reply)) return { retry: CONFLICT_RETRY };
         if (['answer', 'ready'].includes(reply?.type) && reply.text) return { result: { type: reply.type, text: String(reply.text).slice(0, 6000), tools: toolLog, ...reportRuleOf(reply) } };
@@ -497,9 +513,9 @@ function tidyRecipe(recipe) {
 const recipeSql = recipe => { try { return recipe ? (M.normalizeRecipe(recipe).sources || []).map(source => source.sql || '').join('\n') : ''; } catch (_) { return ''; } };
 async function compileTurn(client, { month, prompt, recipe, error, style = '', outline = null, previousPrompt = '' }) {
     // A working recipe from an earlier prompt is the base, so a small prompt change does not reroll the title or layout.
-    const base = recipe && !error && previousPrompt && previousPrompt !== prompt ? `之前的提示词：\n${previousPrompt}\n\n按之前提示词做出、能正常运行的配方：${JSON.stringify(recipe).slice(0, 12000)}\n在这个配方基础上按提示词的变化修改：没有被新要求替换的部分保持原样；展示形式变化时，旧 render、图表/卡片及小格子布局必须重建，旧配方只作数据与计算参考；提示词里有而这个配方还没做到的要求（例如要显示的标题）必须补上；数据来源换了时重新用工具查清新来源的准确名称。` : '';
+    const base = recipe && !error && previousPrompt && previousPrompt !== prompt ? `之前的提示词：\n${previousPrompt}\n\n按之前提示词做出、能正常运行的配方：${JSON.stringify(recipe).slice(0, 4000)}\n在这个配方基础上按提示词的变化修改：没有被新要求替换的部分保持原样；展示形式变化时，旧 render、图表/卡片及小格子布局必须重建，旧配方只作数据与计算参考；提示词里有而这个配方还没做到的要求（例如要显示的标题）必须补上；数据来源换了时重新用工具查清新来源的准确名称。` : '';
     const facts = await grounding([prompt, recipeSql(recipe)].join('\n'), month, { outline, signal: client.signal, observe: client.observe, stats: client.stats }).catch(problem => { if (problem.name === 'AbortError') throw problem; return ''; });
-    const content = [`报告月份：${month}`, `最终提示词：\n${prompt}`, styleLine(style), facts, recipe && error ? `上一次的配方：${JSON.stringify(recipe).slice(0, 12000)}\n运行出错：${error}\n请修正。` : base].filter(Boolean).join('\n\n');
+    const content = [`报告月份：${month}`, `最终提示词：\n${prompt}`, styleLine(style), facts, recipe && error ? `上一次的配方：${JSON.stringify(recipe).slice(0, 4000)}\n运行出错：${error}\n请修正。` : base].filter(Boolean).join('\n\n');
     return runWithTools(client, { system: COMPILE_PROMPT, month, messages: [{ role: 'user', content }], context: { outline }, fallback: { type: 'ask', question: '这个提示词我还没能编译成可运行的配方，能在对话里补充一下用哪张表、哪些列吗？', choices: [] }, accept: async (reply, toolLog) => {
         if (reply?.type === 'ask' && reply.question) return { result: askResult(reply, toolLog) };
         if (reply?.type === 'recipe') {
