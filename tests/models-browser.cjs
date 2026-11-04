@@ -6,14 +6,20 @@ const root=path.resolve(__dirname,'..'),prefix='/digital-human/dh/model-fixture'
 let server,browser;
 (async()=>{
  const app=express();app.use(express.json({limit:'4mb'}));
- let state={mode:'adc',config_id:'',items:[],protocols:[]},drafts=[],calls=[],hold=false,release;
+ let state={mode:'adc',config_id:'',items:[],protocols:[]},drafts=[],calls=[],hold=false,release,inferenceMode='answer';
  const ok=(res,data)=>res.json({code:0,data});
  app.get(prefix+'/api/environment',(_q,r)=>ok(r,{mode:'remote',revision:0,switchable:false}));
  app.get(prefix+'/api/ai-models',(_q,r)=>ok(r,state));
  app.post(prefix+'/api/ai-models/profiles',(q,r)=>{drafts.push(q.body);const item={...q.body,id:'a'.repeat(32),revision:Math.random().toString(16).slice(2),has_api_key:!!q.body.api_key};for(const key of ['api_key','headers','extra_body','body_template'])delete item[key];state.items=[item];ok(r,item);});
  app.post(prefix+'/api/ai-models/select',(q,r)=>{state={...state,...q.body};ok(r,state);});
  app.post(prefix+'/api/ai-models/test',(q,r)=>{drafts.push(q.body);ok(r,{text:'OK',protocol:q.body.protocol,ms:15});});
- app.post(prefix+'/api/ai-models/generate',(q,r)=>{calls.push(q.body);const finish=()=>ok(r,{text:JSON.stringify({type:'answer',text:'独立模型已回答'}),protocol:'openai',model:'fixture-model',ms:10,request_id:'fixture'});if(hold)release=finish;else finish();});
+ app.post(prefix+'/api/ai-models/generate',(q,r)=>{calls.push(q.body);
+  if(inferenceMode!=='answer'){
+   const summary=q.body.messages.at(-1).content.includes('你为月报格子写总结');
+   if(summary&&inferenceMode==='summary-failure')return r.json({code:502,message:'模型服务返回空响应（请求编号 fixture-failed）',data:{kind:'model_transport',requestId:'fixture-failed',upstreamStatus:200,contentType:'text/html',responseBytes:0}});
+   return ok(r,{text:JSON.stringify(summary?{zh:'本月操作量为 411 次。',en:'There were 411 operations this month.'}:{type:'recipe',reply:'已生成',recipe:{sources:[],compute:'function compute(){return {total:411};}',render:'function render(result,kit){return kit.text("本月操作量 "+result.total);}',narrative:{prompt:'用一句话总结'}}}),protocol:'openai',model:'fixture-model',ms:10,request_id:'fixture'});
+  }
+  const finish=()=>ok(r,{text:JSON.stringify({type:'answer',text:'独立模型已回答'}),protocol:'openai',model:'fixture-model',ms:10,request_id:'fixture'});if(hold)release=finish;else finish();});
  app.get(prefix+'/api/air/documents',(_q,r)=>ok(r,[]));
  app.get(prefix+'/api/agent/capabilities',(_q,r)=>ok(r,{tools:[],sources:[]}));
  app.post(prefix+'/api/ops/tables/refresh',(_q,r)=>ok(r,{tables:[],health:{},total:0}));
@@ -59,8 +65,26 @@ let server,browser;
  await page.waitForFunction(()=>AiOpsModels.busy());await new Promise(r=>setTimeout(r,80));const count=calls.length;
  await page.evaluate(async()=>{cancelFixture.abort();await modelPending;});if(release)release();await new Promise(r=>setTimeout(r,100));
  assert.equal(await page.evaluate(()=>modelLateResult),'AbortError');assert.equal(calls.length,count);
+ hold=false;
+ // Production regression: summary transport failures preserve computed data and never recompile the recipe.
+ inferenceMode='summary-failure';const summaryStart=calls.length;
+ await page.evaluate(async id=>{AiReportTrace.setEnabled(true);const cell=AiReportApp.find(id).cell;cell.prompt='统计本月操作量。用一句话总结。';await AiReportApp.tryPrompt(id);},id);
+ assert.equal(calls.length-summaryStart,2,'one compilation and one summary; no recipe-repair loop');
+ assert.equal(calls.at(-1).max_tokens,4000);
+ const failed=await page.evaluate(id=>{const c=AiReportApp.find(id).cell;return {recipe:c.recipe,output:c.output,chat:c.chat};},id);
+ assert.equal(failed.output.result.total,411);assert.match(failed.output.html,/411/);assert.match(failed.output.error,/空响应/);
+ assert.equal(failed.recipe.sources.length,0);
+ const diagnostic=await page.evaluate(id=>AiReportTrace.list(id),id);
+ assert(JSON.stringify(diagnostic).includes('fixture-failed'));
+ assert(JSON.stringify(diagnostic).includes('text/html'));
+ inferenceMode='summary-success';const retryStart=calls.length;
+ await page.evaluate(id=>AiReportApp.tryPrompt(id),id);
+ assert.equal(calls.length-retryStart,2);
+ const recovered=await page.evaluate(id=>AiReportApp.find(id).cell.output,id);
+ assert.equal(recovered.error,'');assert.equal(recovered.narrative.zh,'本月操作量为 411 次。');assert.equal(recovered.result.total,411);
+ inferenceMode='answer';
  // English labels and developer tools entry are reachable.
  await page.evaluate(()=>{document.documentElement.lang='en';AiOpsModelSettings.show();});await page.getByRole('dialog',{name:'AI model settings'}).waitFor();await page.locator('.aim-dialog [data-close]').click();
  await page.goto(origin+prefix+'/dev.html');await page.getByText('AI 模型配置',{exact:true}).first().click();await page.getByRole('dialog',{name:'AI 模型配置'}).waitFor();
- assert.deepEqual(errors,[]);console.log('PASS: model settings, HTTP test/save/select, password masking, themes, mobile, direct report inference, isolated contexts, cancellation, English and developer menu. Screenshots: '+screenshots);
+ assert.deepEqual(errors,[]);console.log('PASS: model settings, HTTP test/save/select, themes, mobile, inference, isolated contexts, cancellation, summary failure/recovery without recipe repair, English and developer menu. Screenshots: '+screenshots);
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{await browser?.close();await new Promise(r=>server?server.close(r):r());});

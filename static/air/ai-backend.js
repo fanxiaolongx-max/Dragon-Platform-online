@@ -806,7 +806,7 @@ const AI={
         const content=[`报告月份：${month}`,`格子需求：${prompt}`,styleLine(String(body.style||'').slice(0,8000)),`总结要求：${normalized.narrative?.prompt||'概括本月要点'}`,`计算结果：${JSON.stringify(result??null).slice(0,20000)}`].filter(Boolean).join('\n');
         const messages=[{role:'user',content}];
         for(let attempt=0;attempt<3;attempt++){
-            const raw=await client.generateChat({systemInstruction:instruction,messages});
+            const raw=await client.generateChat({systemInstruction:instruction,messages,maxOutputTokens:4000,temperature:0.2});
             const reply=parseReply(raw.text),issue=reply?.zh?(M.summaryConflict(plain(reply.zh),prompt)||M.summaryConflict(plain(reply.en),prompt)):'AI 没有返回有效的总结';
             if(!issue)return {zh:plain(reply.zh),en:plain(reply.en)};
             trace({kind:'retry',text:issue});messages.push({role:'model',content:raw.text||''},{role:'user',content:issue+'。请根据同一份数据重新写完整总结，严格遵守格子要求。'});

@@ -282,10 +282,9 @@ def extract(c, data):
         # 1. 错误拦截：某些国产网关在 HTTP 200 下返回业务错误 JSON
         if 'error' in data and data['error']:
             err = data['error']
-            msg = err.get('message') if isinstance(err, dict) else str(err)
-            raise BusinessError(502, f"模型服务返回错误：{msg}")
+            raise BusinessError(502, '模型服务返回业务错误，请联系模型服务管理员核对请求编号')
         if data.get('code') and data.get('code') not in (0, 200, '0', '200') and data.get('message'):
-            raise BusinessError(502, f"模型服务返回错误：{data.get('message')}")
+            raise BusinessError(502, '模型服务返回业务错误，请联系模型服务管理员核对请求编号')
 
         choices = data.get('choices')
         if isinstance(choices, list) and len(choices) > 0:
@@ -337,42 +336,85 @@ def extract(c, data):
     return ''
 
 
+def response_json(raw, protocol):
+    """Some OpenAI gateways return SSE even with stream=false. Never treat HTML as model text."""
+    text = raw.decode('utf-8-sig').strip()
+    try:
+        data = json.loads(text)
+    except ValueError:
+        if protocol != 'openai' or not any(line.startswith('data:') for line in text.splitlines()):
+            raise BusinessError(502, '模型服务返回空响应' if not text else '模型服务返回非 JSON 响应（可能是网关错误页），请检查模型服务和代理') from None
+        data = {'choices': [{'message': {'content': '', 'reasoning_content': ''}, 'finish_reason': None}]}
+        choice = data['choices'][0]
+        events, done = 0, False
+        # SSE permits comments, event names and multi-line data, with blank-line event boundaries.
+        for frame in re.split(r'\r?\n\r?\n', text):
+            payload = '\n'.join(line[5:].lstrip(' ') for line in frame.splitlines() if line.startswith('data:'))
+            if not payload: continue
+            if payload == '[DONE]':
+                done = True
+                break
+            try: event = json.loads(payload)
+            except ValueError: raise BusinessError(502, '模型流式响应包含无效 JSON，请检查模型网关') from None
+            if not isinstance(event, dict): raise BusinessError(502, '模型流式响应结构无效')
+            events += 1
+            if event.get('error') or event.get('code') not in (None, 0, 200, '0', '200'):
+                raise BusinessError(502, '模型流式服务返回业务错误，请联系模型服务管理员核对请求编号')
+            if event.get('usage'): data['usage'] = event['usage']
+            choices = event.get('choices') or []
+            if not isinstance(choices, list): raise BusinessError(502, '模型流式响应结构无效')
+            for part in choices:
+                if not isinstance(part, dict): raise BusinessError(502, '模型流式响应结构无效')
+                if part.get('index', 0) != 0: continue
+                delta = part.get('delta') or part.get('message') or {}
+                if not isinstance(delta, dict): raise BusinessError(502, '模型流式响应结构无效')
+                for key in ('content', 'reasoning_content'):
+                    value = delta.get(key)
+                    if isinstance(value, list): value = ''.join(x.get('text', '') for x in value if isinstance(x, dict) and isinstance(x.get('text'), str))
+                    if isinstance(value, str): choice['message'][key] += value
+                if part.get('finish_reason'): choice['finish_reason'] = part['finish_reason']
+        if not events or not (done or choice['finish_reason']):
+            raise BusinessError(502, '模型流式响应提前中断，未收到完成标记，请重试')
+    if not isinstance(data, dict): raise BusinessError(502, '模型响应须为 JSON 对象，请检查协议和响应路径')
+    return data
+
+
 async def invoke(c, messages, system='', max_tokens=None, temperature=None):
     url, headers, body = wire(c, messages, system, max_tokens, temperature)
     started, request_id = time.monotonic(), uuid.uuid4().hex
 
-    # ── 日志：请求阶段（脱敏） ──
-    safe_headers = dict(headers)
-    for hk in ('Authorization', 'x-api-key', c.get('auth_header', '')):
-        if hk in safe_headers and safe_headers[hk]:
-            safe_headers[hk] = safe_headers[hk][:12] + '...[REDACTED]'
-    logger.info(f"[MODEL-INVOKE] request_id={request_id} protocol={c['protocol']} model={c['model']}")
-    logger.info(f"[MODEL-INVOKE] URL: {url}")
-    logger.info(f"[MODEL-INVOKE] headers(脱敏): {json.dumps(safe_headers, ensure_ascii=False)}")
-    logger.info(f"[MODEL-INVOKE] body: {json.dumps(body, ensure_ascii=False)}")
-    logger.info(f"[MODEL-INVOKE] max_tokens={body.get('max_tokens') or body.get('max_output_tokens') or body.get('maxOutputTokens') or body.get('options', {}).get('num_predict')}")
+    # Only allowlisted transport metadata: headers, bodies and provider errors can echo credentials.
+    diagnostic = {'kind': 'model_transport', 'requestId': request_id, 'protocol': c['protocol']}
+    limits = {key: body[key] for key in ('max_tokens', 'max_completion_tokens', 'max_output_tokens')
+              if type(body.get(key)) is int}
+    if limits: diagnostic['outputLimits'] = limits
+    logger.info(f"[MODEL-INVOKE] request_id={request_id} protocol={c['protocol']}")
 
     try:
         # Dedicated client: do not inherit the base client's identity headers, cookies, TLS policy, or retries.
         async with httpx.AsyncClient(timeout=c['timeout'], verify=c['verify_ssl'], trust_env=False, follow_redirects=False) as client:
             async with client.stream('POST', url, headers=headers, json=body) as r:
+                media_type = r.headers.get('content-type', '').split(';')[0].strip().lower()
+                if not re.fullmatch(r'[a-z0-9.+-]+/[a-z0-9.+-]+', media_type): media_type = 'unknown'
+                diagnostic.update(upstreamStatus=r.status_code, contentType=media_type)
                 chunks, size = [], 0
                 async for chunk in r.aiter_bytes():
                     size += len(chunk)
+                    diagnostic['responseBytes'] = size
                     if size > 4 * 1024 * 1024: raise BusinessError(502, '模型响应超过 4 MB 上限')
                     chunks.append(chunk)
                 status = r.status_code
+                diagnostic['responseBytes'] = size
                 if status < 200 or status >= 300:
                     hint = {401: '认证失败，请检查 API Key 和认证方式', 403: '无权调用此模型', 404: '模型或接口路径不存在', 429: '模型限流或额度不足'}.get(status, '模型服务返回错误')
-                    raise BusinessError(status, hint + f'（HTTP {status}，请求编号 {request_id}）')
-                data = json.loads(b''.join(chunks))
+                    raise BusinessError(status, hint + f'（HTTP {status}）')
+                data = response_json(b''.join(chunks), c['protocol'])
 
         # ── 日志：响应阶段 ──
         ended = time.monotonic()
         total_ms = round((ended - started) * 1000)
-        logger.info(f"[MODEL-INVOKE] response status={status} elapsed_ms={total_ms} body: {json.dumps(data, ensure_ascii=False)}")
+        logger.info(f"[MODEL-INVOKE] response request_id={request_id} status={status} elapsed_ms={total_ms} content_type={media_type} bytes={size}")
         text = extract(c, data)
-        logger.info(f"[MODEL-INVOKE] extracted text (len={len(text)}): {text[:500]}")
 
         # Reject incomplete responses instead of saving truncated recipes as successful results.
         _trunc_status = data.get('status') in ('failed', 'incomplete')
@@ -439,11 +481,14 @@ async def invoke(c, messages, system='', max_tokens=None, temperature=None):
             'usage': usage,
             'tps': tps
         }
-    except httpx.TimeoutException: raise BusinessError(504, '模型请求超时，未自动重试；请检查模型服务或提高超时设置') from None
-    except httpx.RequestError as exc: raise BusinessError(502, f'无法连接模型服务（{exc}），请检查地址、HTTP/HTTPS、网络及证书设置') from None
-    except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
-        logger.error(f"[MODEL-INVOKE] 响应格式解析失败: {type(exc).__name__}: {exc}")
-        raise BusinessError(502, f'模型返回格式与所选协议不匹配（{type(exc).__name__}: {exc}），请检查协议和响应路径') from None
+    except (httpx.RequestError, BusinessError, ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
+        if isinstance(exc, BusinessError): code, message = exc.code, exc.message
+        elif isinstance(exc, httpx.TimeoutException): code, message = 504, '模型请求超时，未自动重试；请检查模型服务或提高超时设置'
+        elif isinstance(exc, httpx.RequestError): code, message = 502, '无法连接模型服务，请检查地址、HTTP/HTTPS、网络及证书设置'
+        else: code, message = 502, '模型返回格式与所选协议不匹配，请检查协议和响应路径'
+        diagnostic['ms'] = round((time.monotonic() - started) * 1000)
+        logger.warning(f"[MODEL-INVOKE] failed {json.dumps(diagnostic)} code={code}")
+        raise BusinessError(code, message + f'（请求编号 {request_id}）', diagnostic) from None
 
 
 async def generate(payload):

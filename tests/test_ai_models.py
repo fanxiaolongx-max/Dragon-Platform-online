@@ -212,12 +212,73 @@ class ModelsTests(unittest.IsolatedAsyncioTestCase):
 
         # 5. extraction handles gateway errors
         err_resp = {'error': {'message': 'Quota exceeded'}}
-        with self.assertRaisesRegex(BusinessError, 'Quota exceeded'):
+        with self.assertRaisesRegex(BusinessError, '业务错误'):
             service.extract(cfg, err_resp)
 
         # 6. legacy choices[0].text
         legacy_resp = {'choices': [{'text': 'Legacy completion output'}]}
         self.assertEqual(service.extract(cfg, legacy_resp), 'Legacy completion output')
+
+    async def test_openai_gateway_sse_assembled_with_usage_and_complete_marker(self):
+        real_client = httpx.AsyncClient
+        events = [
+            {'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}}]},
+            {'choices': [{'index': 0, 'delta': {'content': '{"zh":"本月操作'}}]},
+            {'choices': [{'index': 0, 'delta': {'content': '量上升","en":"Up"}'}}]},
+            {'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]},
+            {'choices': [], 'usage': {'completion_tokens': 25}},
+        ]
+        stream = ': heartbeat\r\n\r\n' + ''.join('event: message\r\ndata: ' + json.dumps(e) + '\r\n\r\n' for e in events) + 'data: [DONE]\r\n\r\n'
+        calls = []
+        def handle(request):
+            calls.append(request)
+            self.assertIs(json.loads(request.content)['stream'], False)
+            return httpx.Response(200, content=stream, headers={'content-type': 'text/event-stream'})
+        with patch.object(service.httpx, 'AsyncClient', side_effect=lambda **kw: real_client(transport=httpx.MockTransport(handle), **kw)):
+            reply = await service.invoke(service.validate(self.profile), [{'role': 'user', 'content': 'summary'}], max_tokens=4000)
+        self.assertEqual(json.loads(reply['text']), {'zh': '本月操作量上升', 'en': 'Up'})
+        self.assertEqual(reply['usage']['completion_tokens'], 25)
+        self.assertEqual(len(calls), 1)
+
+    async def test_bad_gateway_responses_have_safe_diagnostics_without_retries(self):
+        real_client = httpx.AsyncClient
+        cases = [
+            (b'', 'application/json', '空响应'),
+            (b'<html>fixture-private-key fixture-private-header</html>', 'text/html', '非 JSON'),
+            (b'[]', 'application/json', 'JSON 对象'),
+            (b'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n', 'text/event-stream', '提前中断'),
+            (b'data: bad\n\ndata: [DONE]\n\n', 'text/event-stream', '无效 JSON'),
+            (b'data: {"error":{"message":"fixture-private-key"}}\n\n', 'text/event-stream', '业务错误'),
+            (b'{"error":{"message":"fixture-private-key"}}', 'application/json', '业务错误'),
+        ]
+        for raw, media, expected in cases:
+            calls, logs = [], []
+            def handle(request):
+                calls.append(request)
+                return httpx.Response(200, content=raw, headers={'content-type': media})
+            with self.subTest(expected=expected), patch.object(service.httpx, 'AsyncClient', side_effect=lambda **kw: real_client(transport=httpx.MockTransport(handle), **kw)), patch.object(service.logger, 'info', side_effect=logs.append), patch.object(service.logger, 'warning', side_effect=logs.append):
+                with self.assertRaisesRegex(BusinessError, expected) as result:
+                    await service.invoke(service.validate(self.profile), [{'role': 'user', 'content': 'summary fixture-private-key'}])
+            error = result.exception
+            self.assertEqual(error.data['kind'], 'model_transport')
+            self.assertEqual(error.data['upstreamStatus'], 200)
+            self.assertEqual(error.data['contentType'], media)
+            self.assertEqual(error.data['responseBytes'], len(raw))
+            self.assertIn(error.data['requestId'], error.message)
+            self.assertEqual(len(calls), 1)
+            exported = str(logs) + error.message + str(error.data)
+            for secret in ('fixture-private-key', 'fixture-private-header'):
+                self.assertNotIn(secret, exported)
+
+    async def test_bom_json_and_sse_truncation_are_not_silently_accepted(self):
+        parsed = service.response_json(b'\xef\xbb\xbf{"choices":[{"message":{"content":"OK"}}]}', 'openai')
+        self.assertEqual(service.extract({'protocol': 'openai'}, parsed), 'OK')
+        stream = b'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n'
+        real_client = httpx.AsyncClient
+        with patch.object(service.httpx, 'AsyncClient', side_effect=lambda **kw: real_client(transport=httpx.MockTransport(lambda request: httpx.Response(200, content=stream)), **kw)):
+            with self.assertRaisesRegex(BusinessError, '截断'):
+                await service.invoke(service.validate(self.profile), [{'role': 'user', 'content': 'summary'}])
+
 
     async def test_migration_idempotence_and_existing_report_preservation(self):
         self.connection.execute("INSERT INTO t_report_template(name,title) VALUES('existing','keep me')")

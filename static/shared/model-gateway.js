@@ -21,7 +21,7 @@ async function request(path,body,signal,method){
  const response=await fetch(base()+'/ai-models'+path,{method:method||(body?'POST':'GET'),headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,signal,cache:'no-store'});
  let json;try{json=await response.json();}catch(_){throw new Error('模型配置接口未返回 JSON，请检查应用版本与代理');}
  signal?.throwIfAborted();
- if(!response.ok||json.code!==0)throw Object.assign(new Error(json.message||'模型接口失败'),{status:json.code||response.status});
+ if(!response.ok||json.code!==0)throw Object.assign(new Error(json.message||'模型接口失败'),{status:json.code||response.status,modelDiagnostic:json.data?.kind==='model_transport'?json.data:undefined});
  if((body||method==='DELETE')&&!['/generate','/test'].includes(path))notify();
  return json.data;
 }
@@ -48,7 +48,7 @@ function conversation(owner,fresh,fn,{signal,onState,onDiagnostic}={}){
   const ask=async(prompt,onUpdate,options={})=>{
    signal?.throwIfAborted();
    const messages=[...thread.messages,{role:'user',content:String(prompt)}];
-   onDiagnostic?.({kind:'model',stage:'model_request',protocol:selected.protocol,model:selected.model});
+   onDiagnostic?.({kind:'model',stage:'model_request',protocol:selected.protocol,model:selected.model,requestedMaxOutputTokens:options.maxOutputTokens??selected.max_tokens});
    const started=Date.now(),who=owner==='air'?'AI 月报':owner==='panel'?'助理浮窗':owner;
    // 交互日志：和 ADC 对话一样记下提问、回答、耗时和失败原因，模型 API 的问题也能回溯
    const log=(status,title,extra)=>window.OpsLog?.report({kind:'model',status,title,ms:extra.ms??Date.now()-started,detail:{owner,protocol:selected.protocol,model:selected.model,profile:selected.name||undefined,
@@ -66,7 +66,9 @@ function conversation(owner,fresh,fn,{signal,onState,onDiagnostic}={}){
     return result.text;
    }catch(error){
     const stopped=error.name==='AbortError';
-    log(stopped?'ok':'error','模型 API 对话 · '+who+' · '+selected.model+(stopped?' · 已停止':' · 失败'),{detail:{error:stopped?undefined:String(error.message||error),httpStatus:error.status||undefined}});
+    error.retryRecipe=false;
+    onDiagnostic?.({kind:'model',stage:'model_response',status:stopped?'cancelled':'error',protocol:selected.protocol,model:selected.model,ms:Date.now()-started,error:stopped?undefined:String(error.message||error),httpStatus:error.status,diagnostic:error.modelDiagnostic});
+    log(stopped?'ok':'error','模型 API 对话 · '+who+' · '+selected.model+(stopped?' · 已停止':' · 失败'),{detail:{error:stopped?undefined:String(error.message||error),httpStatus:error.status||undefined,diagnostic:error.modelDiagnostic}});
     clear();throw error;
    }
   };

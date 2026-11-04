@@ -9,11 +9,20 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.8.5`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.8.7`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
 ---
+
+## 1.8.6 更新说明
+
+- 修复文字总结未指定输出预算的问题：总结请求使用 4000 tokens 的任务上限（仍受模型配置上限约束，显式附加参数保留覆盖语义）。
+- 兼容 OpenAI 网关忽略 `stream:false` 而返回的 SSE，合并正文和用量；流中断、截断和错误事件继续报错，不保存半份总结。
+- 区分空响应、非 JSON 网关响应和结构不匹配，失败日志记录请求编号、HTTP 状态、Content-Type、响应字节数和耗时；不记录请求头、原始响应或密钥。
+- 模型调用失败后停止自动改写配方；已经计算的数据和图表保留，章节样式操作失败仍回到之前的内容。
+
+需求广场 154 的三次错误都发生在文字总结的 HTTP 响应解析，数据查询及编译成功。原日志缺少响应类型，无法追溯确定当时是空响应、网关错误页还是流式响应。此版本覆盖这些分支并补充诊断；生产模型仍需在更新后复测。本次不修改数据库结构，无需执行升级 SQL。
 
 ## 1.8.0 更新说明
 
