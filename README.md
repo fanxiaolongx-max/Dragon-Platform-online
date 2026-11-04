@@ -9,7 +9,7 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.8.3`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.8.4`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
@@ -555,3 +555,10 @@ flowchart TD
 
 - ADC 接口新增生成速度统计 `_rounds` 后，浏览器测试分别验证业务结果和统计信息，避免旧的完整对象断言误报失败。
 - 保留 1.8.2 的生成速度展示与日志导出功能，无业务数据库变更。
+
+
+### 1.8.4：模型生成速度 (TPS) 自动计算与全流程展示
+
+- 交互日志与对话回复旁自动计算并展示服务端真实生成速度（Tokens Per Second，简写为 `2.7 TPS`）。
+- 提示词与上下文剪枝优化，防止模型达到 4K 上下文上限被截断；增加平衡括号 JSON 容错救赎。
+- 开发者模式日志列表及导出的 JSON 记录中自动注入 `tps` 与生成速度明细。
