@@ -66,10 +66,35 @@
         if(x)out.xAxis=Array.isArray(option.xAxis)?x:x[0];if(y)out.yAxis=Array.isArray(option.yAxis)?y:y[0];
         return out;
     }
+    // Horizontal target labels at ECharts' default end position extend beyond a narrow report cell.
+    // Keep visible labels above the line and inside the plot; explicit in-plot positions and hidden labels survive.
+    function targetLabels(option){
+        let moved=false;
+        const labelOf=label=>{
+            if(label?.show===false)return label;
+            if(label?.position&&!['end','start'].includes(label.position))return label;
+            moved=true;
+            return {...(label||{}),position:'insideEndTop',distance:6,offset:[0,0],rotate:0,align:'right',verticalAlign:'bottom'};
+        };
+        const series=[].concat(option.series||[]).map(series=>{
+            if(!Array.isArray(series?.markLine?.data))return series;
+            const mark=series.markLine;
+            const data=mark.data.map(item=>{
+                // Explicit yAxis thresholds are horizontal; xAxis references and statistical lines stay unchanged.
+                const horizontal=Array.isArray(item)?item.length===2&&item.every(point=>Array.isArray(point?.coord))&&item[0].coord[1]===item[1].coord[1]:item?.yAxis!==undefined&&item.yAxis!==null;
+                if(!horizontal)return item;
+                if(Array.isArray(item))return item.map(point=>({...point,label:labelOf({...mark.label,...point.label})}));
+                return {...item,label:labelOf({...mark.label,...item.label})};
+            });
+            return {...series,markLine:{...mark,data}};
+        });
+        const room=grid=>({...grid,top:Number.isFinite(Number(grid?.top))?Math.max(24,Number(grid.top)):grid?.top??24});
+        return {...option,...(moved?{grid:Array.isArray(option.grid)?option.grid.map(room):room(option.grid)}:{}),...(option.series?{series:Array.isArray(option.series)?series:series[0]}:{})};
+    }
     function chartOption(spec,palette,root){
         const lookup=resolver(palette,root);
         const resolve=value=>typeof value==='string'?value.replace(VAR,(_,name,fallback)=>lookup(name)||(fallback||'').trim()||palette[0]):Array.isArray(value)?value.map(resolve):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([key,item])=>[key,resolve(item)])):value;
-        const option=compactDefaults(keepVisible(resolve(cleanValue(baseOption(spec))||{})));
+        const option=targetLabels(compactDefaults(keepVisible(resolve(cleanValue(baseOption(spec))||{}))));
         return {color:palette,textStyle:{fontFamily:'inherit'},tooltip:{trigger:'axis',confine:true},...option,animationDuration:option.animationDuration??500};
     }
     function staticTable(spec,limit=500){

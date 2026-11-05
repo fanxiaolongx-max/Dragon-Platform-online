@@ -30,13 +30,21 @@ class ModelsTests(unittest.IsolatedAsyncioTestCase):
         self.patches = [patch.object(settings, 'AI_MODEL_ENCRYPTION_KEY', ''),
                         patch.object(settings, 'AI_MODEL_KEY_FILE', str(Path(self.tmp.name) / 'models.key')),
                         patch.object(service, '_lock', asyncio.Lock()),
+                        patch.object(service.ops_service, '_buffer', []),
+                        patch.object(service.ops_service, '_flush_task', None),
+                        patch.object(service.ops_service, '_last_prune', 0.0),
                         patch.object(db, 'query_app_schema', self.query), patch.object(db, 'execute_app_schema', self.execute)]
         for p in self.patches: p.start(); self.addCleanup(p.stop)
         self.sqls = []
         self.profile = {'name': '内网模型', 'protocol': 'openai', 'base_url': 'http://model.fixture:11434/v1', 'model': 'test-model',
                         'api_key': 'fixture-private-key', 'headers': {'X-Private': 'fixture-private-header'}}
 
-    async def asyncTearDown(self): self.connection.close()
+    async def asyncTearDown(self):
+        task = service.ops_service._flush_task
+        if task:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        self.connection.close()
 
     async def query(self, sql, limit=100):
         assert_read_query(sql)
@@ -202,9 +210,9 @@ class ModelsTests(unittest.IsolatedAsyncioTestCase):
         normal = {'choices': [{'message': {'content': '{"zh":"很好","en":"good"}'}}]}
         self.assertEqual(service.extract(cfg, normal), '{"zh":"很好","en":"good"}')
 
-        # 3. extraction fallback to reasoning_content when content is null/empty
+        # 3. thought-only responses must not leak into the final answer or browser logs.
         reasoning_only = {'choices': [{'message': {'content': None, 'reasoning_content': '{"zh":"从思考中提取","en":"from thinking"}'}}]}
-        self.assertEqual(service.extract(cfg, reasoning_only), '{"zh":"从思考中提取","en":"from thinking"}')
+        self.assertEqual(service.extract(cfg, reasoning_only), '')
 
         # 4. extraction with think tags in content
         with_think = {'choices': [{'message': {'content': '<think>analysis</think>{"zh":"已剥离思考"}'}}]}
@@ -239,6 +247,48 @@ class ModelsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json.loads(reply['text']), {'zh': '本月操作量上升', 'en': 'Up'})
         self.assertEqual(reply['usage']['completion_tokens'], 25)
         self.assertEqual(len(calls), 1)
+
+    async def test_gemini_usage_is_logged_by_server_and_exportable_without_thought_text(self):
+        profile = service.validate({**self.profile, 'protocol': 'gemini', 'model': 'gemini-fixture',
+                                    'extra_body': {'generationConfig': {'thinkingConfig': {'thinkingBudget': 512, 'includeThoughts': True}}}})
+        real_client = httpx.AsyncClient
+        def handle(request):
+            config = json.loads(request.content)['generationConfig']
+            self.assertEqual(config['maxOutputTokens'], 4000)
+            self.assertEqual(config['thinkingConfig']['thinkingBudget'], 512)
+            return httpx.Response(200, json={
+                'candidates': [{'content': {'parts': [{'thought': True, 'text': 'fixture-private-thinking'}, {'text': 'Result'}]}}],
+                'usageMetadata': {'promptTokenCount': 90, 'candidatesTokenCount': 110, 'thoughtsTokenCount': 200,
+                                  'totalTokenCount': 400, 'raw': self.profile['api_key']}})
+        with patch.object(service.httpx, 'AsyncClient', side_effect=lambda **kw: real_client(transport=httpx.MockTransport(handle), **kw)):
+            reply = await service.invoke(profile, [{'role': 'user', 'content': 'fixture-private-prompt'}], max_tokens=4000)
+        p = reply['performance']
+        self.assertEqual(reply['text'], 'Result')
+        self.assertEqual((p['inputTokens'], p['answerTokens'], p['thinkingTokens'], p['generatedTokens']), (90, 110, 200, 310))
+        self.assertEqual((p['thinkingRequest']['mode'], p['thinkingEvidence']), ('on', 'detected'))
+        self.assertIsNone(p['providerGenerationTps'])
+        record, = (await service.ops_service.list_logs(kind='model', q='MODEL-INVOKE'))['logs']
+        self.assertEqual(record['detail']['requestId'], reply['request_id'])
+        self.assertEqual(record['detail']['performance'], p)
+        for private in ('fixture-private-thinking', 'fixture-private-prompt', 'fixture-private-key', 'fixture-private-header'):
+            self.assertNotIn(private, json.dumps(record) + json.dumps(reply))
+
+    async def test_throughput_distinguishes_missing_usage_and_explicit_zero(self):
+        requested = service.thinking_request({'chat_template_kwargs': {'enable_thinking': True}})
+        raw = {'usage': {'prompt_tokens': 90, 'completion_tokens': 310, 'completion_tokens_details': {'reasoning_tokens': 200}},
+               'choices': [{'message': {'content': 'Result', 'reasoning_content': 'private'}}]}
+        qwen, _ = service.performance('openai', raw, 8282, requested, 'http')
+        self.assertEqual((qwen['answerTokens'], qwen['thinkingTokens'], qwen['generatedTokens']), (110, 200, 310))
+        self.assertEqual((qwen['generatedEndToEndTps'], qwen['answerEndToEndTps']), (37.43, 13.28))
+        for count in ({}, {'thoughtsTokenCount': 0}):
+            gemini, _ = service.performance('gemini', {'usageMetadata': {'candidatesTokenCount': 110, **count}}, 8282,
+                                           service.thinking_request({}), 'http')
+            self.assertEqual(gemini['answerTokens'], 110)
+            self.assertEqual(gemini['thinkingEvidence'], 'zero_reported' if count else 'unknown')
+            self.assertEqual(gemini['generatedTokens'], 110 if count else None)
+        missing, _ = service.performance('openai', {'usage': {'completion_tokens': 'invalid'}}, 8282, requested, 'http')
+        self.assertEqual(missing['tokenSource'], 'unavailable')
+        self.assertIsNone(missing['generatedEndToEndTps'])
 
     async def test_bad_gateway_responses_have_safe_diagnostics_without_retries(self):
         real_client = httpx.AsyncClient

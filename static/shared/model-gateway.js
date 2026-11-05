@@ -58,11 +58,11 @@ function conversation(owner,fresh,fn,{signal,onState,onDiagnostic}={}){
     signal?.throwIfAborted();
     thread.messages=[...messages,{role:'assistant',content:result.text}];
     onUpdate?.(result.text);
-    const compTokens=result.usage?.completion_tokens||result.usage?.output_tokens||result.usage?.candidatesTokenCount||(result.text?Math.round(result.text.length/1.8):0);
-    const tps=result.tps!=null?result.tps:(result.ms>0&&compTokens>0?Number((compTokens/(result.ms/1000)).toFixed(1)):undefined);
-    const tpsTitle=tps?` · ${tps} TPS`:'';
-    log('ok','模型 API 对话 · '+who+' · '+(result.model||selected.model)+tpsTitle,{ms:result.ms,detail:{requestId:result.request_id,answerChars:String(result.text||'').length,answer:String(result.text||''),usage:result.usage||undefined,tps}});
-    onDiagnostic?.({kind:'model',stage:'model_response',status:'success',protocol:result.protocol,model:result.model,ms:result.ms,tps,requestId:result.request_id});
+    const performance=result.performance;
+    const tps=performance?.generatedEndToEndTps??performance?.answerEndToEndTps;
+    options.onPerformance?.(performance,result.request_id);
+    log('ok','模型 API 对话 · '+who+' · '+(result.model||selected.model),{ms:result.ms,detail:{requestId:result.request_id,answerChars:String(result.text||'').length,answer:String(result.text||''),performance,tps}});
+    onDiagnostic?.({kind:'model',stage:'model_response',status:'success',protocol:result.protocol,model:result.model,ms:result.ms,tps,requestId:result.request_id,performance});
     return result.text;
    }catch(error){
     const stopped=error.name==='AbortError';

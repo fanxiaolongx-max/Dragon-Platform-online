@@ -14,8 +14,10 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from app import db
 from app.config import settings
+from app.core.diagnostic_safety import clean
 from app.core.exceptions import BusinessError, DatabaseError
 from app.core.logger import logger
+from app.services import ops_service
 from app.utils.sql_helper import format_sql_value as lit
 
 PROTOCOLS = ('openai', 'responses', 'anthropic', 'gemini', 'ollama', 'custom')
@@ -242,7 +244,12 @@ def wire(c, messages, system='', max_tokens=None, temperature=None):
     else:
         url = c['base_url']
         body = template(c['body_template'], {'${messages}': chat, '${prompt}': messages[-1]['content'], '${system}': system, '${model}': model, '${max_tokens}': n, '${temperature}': t})
-    body.update(c['extra_body'])
+    extra = c['extra_body']
+    body.update(extra)
+    if p == 'gemini' and isinstance(extra.get('generationConfig'), dict):
+        # Adding thinkingConfig must not remove the normal temperature/output limit.
+        body['generationConfig'] = {'maxOutputTokens': n, 'temperature': t, **extra['generationConfig']}
+        body['generationConfig'] = {k: v for k, v in body['generationConfig'].items() if v is not None}
     body = {k: v for k, v in body.items() if v is not None}
     # Streaming and provider-side tools are intentionally not delegated: the app executes only its assigned DB tools.
     if p not in ('gemini', 'custom'): body['stream'] = False
@@ -256,8 +263,7 @@ def strip_reasoning(text: str) -> str:
     if not text:
         return ''
     cleaned = re.sub(r'<\s*think(?:ing)?\b[^>]*>[\s\S]*?<\s*/\s*think(?:ing)?\s*>', '', text, flags=re.I)
-    if '<think' in cleaned.lower():
-        cleaned = re.sub(r'<\s*think(?:ing)?\b[^>]*>[\s\S]*$', '', cleaned, flags=re.I)
+    cleaned = re.sub(r'<\s*think(?:ing)?\b[^>]*>[\s\S]*$', '', cleaned, flags=re.I)
     return cleaned.strip()
 
 
@@ -299,13 +305,6 @@ def extract(c, data):
                 if isinstance(content, list):
                     joined = ''.join(str(x.get('text', '')) if isinstance(x, dict) else str(x) for x in content)
                     if joined.strip(): return strip_reasoning(joined)
-
-            # 思考模式兼容：当 content 为空或 null 时，回退提取 reasoning_content / reasoning / thought
-            for rk in ('reasoning_content', 'reasoning', 'thought'):
-                r_val = msg.get(rk)
-                if isinstance(r_val, str) and r_val.strip():
-                    logger.info(f"[MODEL-INVOKE] message.content 为空，从 {rk} 提取正文（长度 {len(r_val)}）")
-                    return strip_reasoning(r_val)
 
             # completions 接口兼容（choices[0].text）
             if isinstance(first.get('text'), str) and first['text'].strip():
@@ -370,6 +369,7 @@ def response_json(raw, protocol):
                 if not isinstance(delta, dict): raise BusinessError(502, '模型流式响应结构无效')
                 for key in ('content', 'reasoning_content'):
                     value = delta.get(key)
+                    if key == 'reasoning_content' and not value: value = delta.get('reasoning') or delta.get('thought')
                     if isinstance(value, list): value = ''.join(x.get('text', '') for x in value if isinstance(x, dict) and isinstance(x.get('text'), str))
                     if isinstance(value, str): choice['message'][key] += value
                 if part.get('finish_reason'): choice['finish_reason'] = part['finish_reason']
@@ -379,16 +379,108 @@ def response_json(raw, protocol):
     return data
 
 
+def _object(value):
+    return value if isinstance(value, dict) else {}
+
+
+def _items(value):
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def _counts(value, *keys):
+    obj = _object(value)
+    return {key: obj[key] for key in keys if type(obj.get(key)) is int and 0 <= obj[key] <= 10**12}
+
+
+def thinking_request(body):
+    """Allowlist controls actually sent on the wire; absence is provider default, not off."""
+    gemini = _object(_object(body.get('generationConfig')).get('thinkingConfig'))
+    controls = _counts(gemini, 'thinkingBudget')
+    if gemini.get('thinkingBudget') == -1: controls['thinkingBudget'] = -1
+    controls.update(_counts(_object(body.get('thinking')), 'budget_tokens'))
+    controls.update(_counts(body, 'thinking_budget'))
+    flags = (('includeThoughts', gemini.get('includeThoughts')),
+             ('enable_thinking', body.get('enable_thinking', _object(body.get('chat_template_kwargs')).get('enable_thinking'))),
+             ('think', body.get('think')))
+    controls.update({key: value for key, value in flags if type(value) is bool})
+    levels = (('thinkingLevel', gemini.get('thinkingLevel')), ('thinkingType', _object(body.get('thinking')).get('type')),
+              ('reasoningEffort', body.get('reasoning_effort', _object(body.get('reasoning')).get('effort'))),
+              ('thinkLevel', body.get('think')))
+    controls.update({key: value.lower() for key, value in levels
+                     if isinstance(value, str) and value.lower() in ('none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'enabled', 'disabled', 'adaptive')})
+    settings = [v for k, v in controls.items() if k not in ('includeThoughts', 'thinking_budget', 'budget_tokens')]
+    switches = {v not in (False, 0, 'none', 'disabled') for v in settings}
+    mode = 'mixed' if len(switches) > 1 else 'on' if switches == {True} else 'off' if switches == {False} else 'provider_default'
+    return {'mode': mode, 'controls': controls}
+
+
+def performance(protocol, data, elapsed, requested, transport):
+    """Separate provider counts and elapsed throughput. Never infer a hidden phase's duration."""
+    thinking = answer = generated = None
+    observed = False
+    if protocol == 'gemini':
+        usage = _counts(data.get('usageMetadata'), 'promptTokenCount', 'candidatesTokenCount', 'thoughtsTokenCount',
+                        'totalTokenCount', 'cachedContentTokenCount', 'toolUsePromptTokenCount')
+        input_tokens, answer, thinking = (usage.get(k) for k in ('promptTokenCount', 'candidatesTokenCount', 'thoughtsTokenCount'))
+        if answer is not None and thinking is not None: generated = answer + thinking
+        observed = any(part.get('thought') is True for c in _items(data.get('candidates'))
+                       for part in _items(_object(c.get('content')).get('parts')))
+    elif protocol == 'ollama':
+        usage = _counts(data, 'prompt_eval_count', 'eval_count', 'eval_duration')
+        input_tokens, generated = usage.get('prompt_eval_count'), usage.get('eval_count')
+        observed = bool(_object(data.get('message')).get('thinking'))
+    else:
+        usage = _counts(data.get('usage'), 'prompt_tokens', 'completion_tokens', 'input_tokens', 'output_tokens', 'total_tokens')
+        detail_key = 'output_tokens_details' if protocol == 'responses' else 'completion_tokens_details'
+        details = _counts(_object(data.get('usage')).get(detail_key), 'reasoning_tokens', 'text_tokens')
+        if details and protocol in ('openai', 'responses'):
+            usage[detail_key] = details
+            thinking = details.get('reasoning_tokens')
+        input_tokens = usage.get('input_tokens', usage.get('prompt_tokens'))
+        generated = usage.get('output_tokens', usage.get('completion_tokens'))
+        text_total = details.get('text_tokens', generated)
+        if thinking is not None and text_total is not None and thinking <= text_total:
+            answer = text_total - thinking
+        observed = any(
+            any(isinstance(m.get(k), str) and m[k].strip() for k in ('reasoning_content', 'reasoning', 'thought'))
+            or (isinstance(m.get('content'), str) and re.search(r'<\s*think(?:ing)?\b', m['content'], re.I))
+            for choice in _items(data.get('choices')) for m in [_object(choice.get('message'))])
+        observed = observed or any(x.get('type') == 'reasoning' for x in _items(data.get('output')))
+        observed = observed or any(x.get('type') in ('thinking', 'redacted_thinking') for x in _items(data.get('content')))
+    evidence = 'detected' if observed or (thinking or 0) > 0 else 'zero_reported' if thinking == 0 else 'unknown'
+    speed = lambda tokens: round(tokens / elapsed * 1000, 2) if tokens is not None and elapsed > 0 else None
+    duration_ns = usage.get('eval_duration') if protocol == 'ollama' else None
+    metrics = {
+        'tokenSource': 'provider' if any(v is not None for v in (input_tokens, answer, thinking, generated)) else 'unavailable',
+        'transport': transport, 'elapsedMs': elapsed, 'inputTokens': input_tokens, 'answerTokens': answer,
+        'thinkingTokens': thinking, 'generatedTokens': generated, 'thinkingRequest': requested, 'thinkingEvidence': evidence,
+        'answerEndToEndTps': speed(answer), 'generatedEndToEndTps': speed(generated),
+        'providerGenerationMs': round(duration_ns / 10**6, 3) if duration_ns else None,
+        'providerGenerationTps': round(generated * 10**9 / duration_ns, 2) if generated is not None and duration_ns else None,
+    }
+    return metrics, usage
+
+
 async def invoke(c, messages, system='', max_tokens=None, temperature=None):
     url, headers, body = wire(c, messages, system, max_tokens, temperature)
     started, request_id = time.monotonic(), uuid.uuid4().hex
 
     # Only allowlisted transport metadata: headers, bodies and provider errors can echo credentials.
     diagnostic = {'kind': 'model_transport', 'requestId': request_id, 'protocol': c['protocol']}
+    model = c['model']
+    for secret in [c['api_key'], *c['headers'].values()]:
+        if secret: model = model.replace(secret, '[REDACTED]')
+    model = clean(model)
+    requested = thinking_request(body)
+    diagnostic['thinkingRequest'] = requested
     limits = {key: body[key] for key in ('max_tokens', 'max_completion_tokens', 'max_output_tokens')
               if type(body.get(key)) is int}
     if limits: diagnostic['outputLimits'] = limits
-    logger.info(f"[MODEL-INVOKE] request_id={request_id} protocol={c['protocol']}")
+    def record(status, ms, **detail):
+        payload = {**diagnostic, 'model': model, **detail}
+        line = f"[MODEL-INVOKE] {status} {json.dumps(payload, ensure_ascii=False)}"
+        (logger.info if status == 'ok' else logger.warning)(line)
+        ops_service.record('model', f'[MODEL-INVOKE] {model or c["protocol"]}', status, payload, ms)
 
     try:
         # Dedicated client: do not inherit the base client's identity headers, cookies, TLS policy, or retries.
@@ -413,7 +505,8 @@ async def invoke(c, messages, system='', max_tokens=None, temperature=None):
         # ── 日志：响应阶段 ──
         ended = time.monotonic()
         total_ms = round((ended - started) * 1000)
-        logger.info(f"[MODEL-INVOKE] response request_id={request_id} status={status} elapsed_ms={total_ms} content_type={media_type} bytes={size}")
+        metrics, usage = performance(c['protocol'], data, total_ms, requested, 'sse' if media_type == 'text/event-stream' else 'http')
+        diagnostic.update(performance=metrics, usage=usage)
         text = extract(c, data)
 
         # Reject incomplete responses instead of saving truncated recipes as successful results.
@@ -461,25 +554,18 @@ async def invoke(c, messages, system='', max_tokens=None, temperature=None):
         for secret in [c['api_key'], *c['headers'].values()]:
             if secret: text = text.replace(secret, '[REDACTED]')
 
-        usage = data.get('usage') or data.get('usageMetadata') or {}
-        comp_tokens = (
-            usage.get('completion_tokens')
-            or usage.get('output_tokens')
-            or usage.get('candidatesTokenCount')
-        )
-        if comp_tokens is None and total_ms > 0 and text:
-            comp_tokens = max(1, round(len(text) / 1.8))
-        tps = round(comp_tokens / (total_ms / 1000), 1) if comp_tokens and total_ms > 0 else None
-        logger.info(f"[MODEL-INVOKE] total_ms={total_ms} comp_tokens={comp_tokens} tps={tps}")
+        tps = metrics['generatedEndToEndTps'] if metrics['generatedEndToEndTps'] is not None else metrics['answerEndToEndTps']
+        record('ok', total_ms, tps=tps)
 
         return {
             'text': text,
             'ms': total_ms,
             'request_id': request_id,
             'protocol': c['protocol'],
-            'model': c['model'],
+            'model': model,
             'usage': usage,
-            'tps': tps
+            'tps': tps,
+            'performance': metrics,
         }
     except (httpx.RequestError, BusinessError, ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
         if isinstance(exc, BusinessError): code, message = exc.code, exc.message
@@ -487,7 +573,7 @@ async def invoke(c, messages, system='', max_tokens=None, temperature=None):
         elif isinstance(exc, httpx.RequestError): code, message = 502, '无法连接模型服务，请检查地址、HTTP/HTTPS、网络及证书设置'
         else: code, message = 502, '模型返回格式与所选协议不匹配，请检查协议和响应路径'
         diagnostic['ms'] = round((time.monotonic() - started) * 1000)
-        logger.warning(f"[MODEL-INVOKE] failed {json.dumps(diagnostic)} code={code}")
+        record('error', diagnostic['ms'], code=code, error=message)
         raise BusinessError(code, message + f'（请求编号 {request_id}）', diagnostic) from None
 
 

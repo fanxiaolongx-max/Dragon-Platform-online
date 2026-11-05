@@ -83,11 +83,12 @@
         // Under the user's own words: copy, and retry (send the same words to the AI again).
         const userTail=(index,busy)=>`<div class="air-msg-tail air-msg-tail-user" data-msg-tail="${index}">${copyButton(index,'user').replace(` data-msg-tail="${index}"`,'')}<button type="button" class="air-msg-copy air-msg-retry" data-retry-msg="${index}" ${busy?'disabled':''} title="${esc(t('把这句话重新发给 AI','Send these words to the AI again'))}">↻ ${t('重试','Retry')}</button></div>`;
         // AI 回复下方：复制按钮旁显示本次生成速度（最低/平均/最高 tok/s；ADC 不返回用量，token 为按文字估算，耗时含往返等待）
-        const fmtTps=value=>String(value>=100?Math.round(value):Math.round(value*10)/10);
+        const fmtTps=value=>String(Math.round(value*100)/100);
         function speedTag(item){
             const summary=Trace?.speedSummary?.(item.rounds);if(!summary)return '';
-            const title=t(`生成速度（每秒 token）：最低 ${fmtTps(summary.minTps)} / 平均 ${fmtTps(summary.avgTps)} / 最高 ${fmtTps(summary.maxTps)}；共 ${summary.rounds} 轮模型往返，输入约 ${summary.inputTokens} / 输出约 ${summary.outputTokens} token，用时 ${(summary.totalMs/1000).toFixed(1)} 秒${summary.estimated?'（token 按文字估算，耗时含往返等待）':''}`,`Generation speed (tokens/s): min ${fmtTps(summary.minTps)} / avg ${fmtTps(summary.avgTps)} / max ${fmtTps(summary.maxTps)}; ${summary.rounds} model round trips, ~${summary.inputTokens} in / ~${summary.outputTokens} out tokens, ${(summary.totalMs/1000).toFixed(1)}s`);
-            const brief=summary.rounds===1||summary.minTps===summary.maxTps?`${fmtTps(summary.avgTps)} TPS`:`${fmtTps(summary.minTps)}~${fmtTps(summary.maxTps)} TPS`;
+            const basis=summary.estimated?t('按字数估算','estimated from text'):summary.rateBasis==='answer'?t('正文 token','answer tokens'):summary.rateBasis==='generated'?t('生成合计 token','total generated tokens'):t('历史口径','historical');
+            const title=t(`端到端速度（${basis}）：最低 ${fmtTps(summary.minTps)} / 平均 ${fmtTps(summary.avgTps)} / 最高 ${fmtTps(summary.maxTps)} tok/s；${summary.rounds} 轮，输入 ${summary.inputTokens??'未上报'} / 输出 ${summary.outputTokens} token`,`End-to-end speed (${basis}): min ${fmtTps(summary.minTps)} / avg ${fmtTps(summary.avgTps)} / max ${fmtTps(summary.maxTps)} tok/s; ${summary.rounds} calls, ${summary.inputTokens??'unreported'} in / ${summary.outputTokens} out tokens`);
+            const brief=summary.rounds===1||summary.minTps===summary.maxTps?`${fmtTps(summary.avgTps)} tok/s`:`${fmtTps(summary.minTps)}~${fmtTps(summary.maxTps)} tok/s`;
             return `<span class="air-msg-speed" title="${esc(title)}">${brief}${summary.rounds>1?` · ${summary.rounds}${t(' 轮',' calls')}`:''}</span>`;
         }
         function message(item,index,cell,busy,latestPrompt,report){

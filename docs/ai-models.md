@@ -25,6 +25,14 @@ Custom example (full endpoint `http://inference.internal/api/generate`):
 
 Exact placeholder values retain their JSON type (`${messages}` is an array, `${max_tokens}` is a number). Other supported placeholders: `${system}` and `${temperature}`. Use a dotted response path such as `data.answer` or `choices.0.message.content`. Custom support covers synchronous POST/JSON text services; it does not automatically implement proprietary signatures, binary protocols, WebSockets, or cloud IAM signing.
 
+## Compare model performance
+
+Select the model and ask the same question in a fresh chat for each run. In **Developer → Tools → Interaction log**, search `MODEL-INVOKE` and expand an entry. **Export JSON** refreshes the current filter and includes these server-side events in the same interaction log. The same marker is written to the service console, but this export does not contain the raw console file. A matching request ID links the server row and browser trace.
+
+- The request and observed thinking are separate. For Gemini, add e.g. `{"generationConfig":{"thinkingConfig":{"thinkingLevel":"HIGH"}}}` to **Extra request parameters JSON** if supported by the selected model, or use its supported `thinkingBudget`. For Qwen gateways supporting it, use `{"enable_thinking":true}`. Request flags do not prove that a provider ran a thinking phase.
+- Native Gemini reads `candidatesTokenCount` for the answer and `thoughtsTokenCount` for thinking; the two sum to generated tokens when both are reported. OpenAI-compatible completion usage is the generated total; when reasoning usage is available, subtract it from the provider's text token count (or the text-only output total) for the answer.
+- Missing metrics remain null, including a missing thinking count. Explicit zero stays zero. End-to-end rates divide reported tokens by the complete model round trip; for example, 310 generated tokens in 8282 ms is 37.43 tok/s. This includes queueing and network time and is not an independent thinking/decode speed. Provider generation duration/rate is shown separately only when available. No raw thought text is needed to measure this.
+
 ## Persistence and deployment
 
 In 1.8.6, cell summaries request at most 4000 output tokens instead of inheriting a potentially larger profile budget. The profile limit still applies; explicit advanced body parameters retain their override behavior. OpenAI-compatible gateways that return SSE despite `stream:false` are supported, including usage and termination checks. Empty responses, gateway HTML and malformed structures remain errors. Failure diagnostics contain only a generated request ID, protocol, numeric output limits, upstream HTTP status, media type, response byte count and elapsed time; headers and raw provider bodies are not logged. Model transport failures stop recipe repair loops, retaining computed cell content. No schema migration is needed for this patch.

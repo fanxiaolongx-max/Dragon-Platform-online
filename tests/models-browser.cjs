@@ -19,7 +19,7 @@ let server,browser;
    if(summary&&inferenceMode==='summary-failure')return r.json({code:502,message:'模型服务返回空响应（请求编号 fixture-failed）',data:{kind:'model_transport',requestId:'fixture-failed',upstreamStatus:200,contentType:'text/html',responseBytes:0}});
    return ok(r,{text:JSON.stringify(summary?{zh:'本月操作量为 411 次。',en:'There were 411 operations this month.'}:{type:'recipe',reply:'已生成',recipe:{sources:[],compute:'function compute(){return {total:411};}',render:'function render(result,kit){return kit.text("本月操作量 "+result.total);}',narrative:{prompt:'用一句话总结'}}}),protocol:'openai',model:'fixture-model',ms:10,request_id:'fixture'});
   }
-  const finish=()=>ok(r,{text:JSON.stringify({type:'answer',text:'独立模型已回答'}),protocol:'openai',model:'fixture-model',ms:10,request_id:'fixture'});if(hold)release=finish;else finish();});
+  const finish=()=>ok(r,{text:JSON.stringify({type:'answer',text:'独立模型已回答'}),protocol:'openai',model:'fixture-model',ms:8282,request_id:'fixture',performance:{inputTokens:90,answerTokens:110,thinkingTokens:200,generatedTokens:310,elapsedMs:8282,answerEndToEndTps:13.28,generatedEndToEndTps:37.43}});if(hold)release=finish;else finish();});
  app.get(prefix+'/api/air/documents',(_q,r)=>ok(r,[]));
  app.get(prefix+'/api/agent/capabilities',(_q,r)=>ok(r,{tools:[],sources:[]}));
  app.post(prefix+'/api/ops/tables/refresh',(_q,r)=>ok(r,{tables:[],health:{},total:0}));
@@ -46,10 +46,15 @@ let server,browser;
  await dialog.locator('[data-close]').click();await page.setViewportSize({width:1440,height:1000});
  // The report uses direct inference on a non-ADC host and never reads credentials.
  const id=await page.evaluate(()=>AiReportApp.state.doc.chapters[0].cells[0].id);
+ await page.evaluate(()=>AiReportTrace.setEnabled(true));
  await page.evaluate(id=>AiReportApp.converse(id,'请说明这个格子'),id);
  await page.waitForFunction(()=>!AiReportApp.state.busy.size);
  assert(calls.length>=1);assert(!JSON.stringify(calls).includes('fixture-password'));assert(calls[0].messages[0].content.includes('请说明这个格子'));
  assert(await page.evaluate(()=>DragonClaw.ready()));
+ const round=await page.evaluate(id=>AiReportApp.find(id).cell.chat.flatMap(m=>m.rounds||[]).at(-1),id);
+ assert.equal(round.outputTokens,310);assert.equal(round.thinkingTokens,200);assert.equal(round.tps,37.43);assert.equal(round.estimated,false);
+ const performanceTrace=await page.evaluate(id=>AiReportTrace.list(id).flatMap(e=>e.steps||[]).find(s=>s.stage==='model_response')?.performance,id);
+ assert.equal(performanceTrace.thinkingTokens,200);assert.equal(performanceTrace.generatedTokens,310);
  // Independent owners keep context separate; stopped work cannot append a late reply or call the model again.
  const before=calls.length;
  await page.evaluate(async()=>{

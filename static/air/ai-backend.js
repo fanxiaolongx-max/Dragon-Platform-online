@@ -225,14 +225,14 @@ function createClient(conv,signal,observe,stats=null){
         prompt=clean(prompt);
         const started=Date.now(),entry=trace({kind:'ai',stage:'model',status:'running',system:clip(options.systemInstruction||''),messages:clip(prompt),tools:(tools||[]).map(tool=>tool.name)});
         try{
-            const text=String(await conv.ask(prompt,undefined,options)||'');
+            let performance,requestId;
+            const text=String(await conv.ask(prompt,undefined,{...options,onPerformance:(value,id)=>{performance=value;requestId=id;}})||'');
             signal?.throwIfAborted();
             let toolCalls=[];
             if(tools)toolCalls=toolCallsOf(text,tools,started);
             const callMs=Date.now()-started;
-            const callTps=callMs>0&&text?Number((Math.round(text.length/1.8)/(callMs/1000)).toFixed(1)):undefined;
-            stats?.round(callMs,toolCalls.map(call=>call.name),prompt.length,text.length,undefined,{prompt,text});
-            Object.assign(entry,{ms:callMs,tps:callTps,reply:clip(text),toolCalls:toolCalls.length?clip(toolCalls.map(call=>({name:call.name,args:call.args}))):'',...(conv.transport!=='model'&&window.ADCChat?.lastRun?{adcRun:clean(window.ADCChat.lastRun)}:{})});
+            stats?.round(callMs,toolCalls.map(call=>call.name),prompt.length,text.length,undefined,{prompt,text,performance,requestId});
+            Object.assign(entry,{ms:callMs,tps:stats?.rounds.at(-1)?.tps,reply:clip(text),toolCalls:toolCalls.length?clip(toolCalls.map(call=>({name:call.name,args:call.args}))):'',...(conv.transport!=='model'&&window.ADCChat?.lastRun?{adcRun:clean(window.ADCChat.lastRun)}:{})});
             Object.assign(entry,{stage:'model_done',status:'success'});publish(entry);
             return {text:toolCalls.length?'':text,toolCalls};
         }catch(error){stats?.round(Date.now()-started,[],prompt.length,0,error.name==='AbortError'?'已停止':error.message);Object.assign(entry,{stage:'failed',status:error.name==='AbortError'?'cancelled':'error',ms:Date.now()-started,error:error.message,...(conv.transport!=='model'&&window.ADCChat?.lastRun?{adcRun:clip(window.ADCChat.lastRun)}:{})});publish(entry);throw error;}
@@ -361,6 +361,7 @@ ${SQL_RECIPE_GUIDE}
 - render：字符串，必须定义 function render(result, kit){...}。result.missing 为真时返回一句提示。
 ${KIT_GUIDE}
 - 配色交给平台：kit.chart 的 ECharts 配置里一般不要写颜色，平台会自动套用月报主题色；确需区分时只能用 6 位十六进制色值，绝不能在 ECharts 配置里写 var(...)。只有自己拼接的 HTML 内联样式可以用 var(--air-accent)、var(--kit-c0) 到 var(--kit-c7)。
+- 水平目标线的可见数值标注默认放在目标虚线上方、绘图区内：markLine.label 使用 position:'insideEndTop'、distance:6，不用默认 end（会超出右边界）。用户要求上方时，替换旧的 end/start/下方位置，同时清除旧的 offset、align、verticalAlign、rotate 等定位覆盖；目标数字、比较符和单位保留真实计算结果。用户明确要求其它位置或不显示标签时遵守其要求。
 - 坐标轴标签、图例和文字不能超出图表或格子的上下左右边界：长分类名缩写或截断（ECharts 用 axisLabel 的 width + overflow:'truncate' 或 rotate），并在 tooltip 里显示全称；不要让图表上方留出大块空白。
 - 提示词里如果有【尺寸约束】，全部内容必须在给定的宽高内完整显示：kit.chart 的 height 按剩余空间设置（减去标题、文字总结和表格占用的高度）；日期缩短为 MM-DD 或 M/D；用 splitNumber 减少刻度；grid 边距收紧并 containLabel:true；图例放顶部单行或省略；表格只保留最关键的列和行（其余用 kit.datatable 分页）；未指定总结长度时默认一到两句，用户明确的长度优先；按约束里给出的规则缩写长名称。
 - 鼠标悬停、高亮、选中等交互效果只能让元素变深或变浅，不能让任何图形或文字消失：不要把 emphasis/blur/select 的颜色设成 transparent 或 none，不要把透明度设得很低，不要用 emphasis.focus 让其他元素几乎看不见。表格、文字等其他内容同样不能在悬停时被隐藏。
@@ -937,7 +938,7 @@ function estimateTokens(text){
 }
 // 本次操作里每轮模型往返的耗时与速度（与 Dragon Platform 的 _rounds 同一格式）：页面显示在 AI 回复下方，导出日志开头列统计表
 function roundsOf(stats){
-    return stats.rounds.filter(round=>!round.error&&round.outputTokens>0).map((round,index)=>({index:index+1,model:stats.model||(stats.transport==='model'?'模型 API':'ADC'),inputTokens:round.inputTokens||0,outputTokens:round.outputTokens,estimated:true,ms:round.ms,ttftMs:null,generationMs:Math.max(1,round.ms),tps:Math.round(round.outputTokens/(Math.max(1,round.ms)/1000)*10)/10,at:round.at||''}));
+    return stats.rounds.filter(round=>!round.error&&round.tps>0).map((round,index)=>({index:index+1,model:stats.model||(stats.transport==='model'?'模型 API':'ADC'),inputTokens:round.inputTokens,outputTokens:round.outputTokens,answerTokens:round.answerTokens,thinkingTokens:round.thinkingTokens,rateBasis:round.rateBasis,requestId:round.requestId,estimated:round.estimated,ms:round.ms,ttftMs:null,generationMs:round.rateMs,tps:round.tps,at:round.at||''}));
 }
 function withRounds(reply,stats){
     const rounds=roundsOf(stats);
@@ -947,10 +948,17 @@ function opStats(rel){
     const stats={rounds:[],tools:[],started:Date.now(),transport:'',model:'',reported:false};
     // 输入 / 输出 token 按文字估算（ADC 不返回用量；中文约 1.6 字 / token，其他约 4 字符 / token），用于回复下方的生成速度
     stats.round=(ms,tools,promptChars,answerChars,error,texts)=>{
+        const at=new Date(Date.now()-ms).toISOString(),base={ms,tools,promptChars,answerChars,at,...(error?{error}:{})};
+        if(stats.transport==='model'){
+            const p=texts?.performance,whole=p?.generatedTokens!=null;
+            stats.rounds.push({...base,inputTokens:p?.inputTokens??null,outputTokens:p?.generatedTokens??p?.answerTokens??null,answerTokens:p?.answerTokens??null,thinkingTokens:p?.thinkingTokens??null,
+                tps:p?.generatedEndToEndTps??p?.answerEndToEndTps??null,rateMs:p?.elapsedMs??null,rateBasis:whole?'generated':'answer',estimated:false,requestId:texts?.requestId});
+            return;
+        }
         const inTok=texts?estimateTokens(texts.prompt):(promptChars?Math.round(promptChars/1.8):0);
         const outTok=texts?estimateTokens(texts.text):(answerChars?Math.round(answerChars/1.8):0);
         const tps=ms>0&&outTok>0?Math.round((outTok/(ms/1000))*10)/10:null;
-        stats.rounds.push({ms,tools,promptChars,answerChars,tps,inputTokens:inTok,outputTokens:outTok,at:new Date(Date.now()-ms).toISOString(),...(error?{error}:{})});
+        stats.rounds.push({...base,tps,inputTokens:inTok,outputTokens:outTok,rateMs:ms,rateBasis:'estimated',estimated:true});
     };
     stats.tool=(name,ms,cached,error,prefetch)=>stats.tools.push({name,ms,...(cached?{cached:true}:{}),...(error?{error:String(error).slice(0,300)}:{}),...(prefetch?{prefetch:true}:{})});
     stats.report=(error,reply)=>{
@@ -958,8 +966,8 @@ function opStats(rel){
         const stopped=error?.name==='AbortError',sum=list=>list.reduce((n,item)=>n+(item.ms||0),0),hits=stats.tools.filter(item=>item.cached).length;
         const ms=Date.now()-stats.started,name=OP_NAMES[rel]||rel,via=stats.transport==='model'?'模型 API'+(stats.model?' '+stats.model:''):'ADC';
         const validRounds=stats.rounds.filter(r=>r.tps>0);
-        const avgTps=validRounds.length?Math.round(validRounds.reduce((a,b)=>a+b.outputTokens,0)/(validRounds.reduce((a,b)=>a+b.ms,0)/1000)*10)/10:null;
-        const tpsTitle=avgTps?` · ${avgTps} TPS`:'';
+        const avgTps=validRounds.length&&new Set(validRounds.map(r=>r.rateBasis)).size===1?Math.round(validRounds.reduce((a,b)=>a+b.outputTokens,0)/(validRounds.reduce((a,b)=>a+b.rateMs,0)/1000)*100)/100:null;
+        const tpsTitle=avgTps?` · ${avgTps} tok/s${stats.transport==='model'?'（端到端）':'（估算）'}`:'';
         window.OpsLog.report({kind:'ai',status:error&&!stopped?'error':'ok',ms,
             title:`AI 月报 · ${name}${stopped?' · 已停止':error?' · 失败':''}：${via} 往返 ${stats.rounds.length} 轮，工具 ${stats.tools.length} 次${hits?`（缓存命中 ${hits} 次）`:''}${tpsTitle}，用时 ${(ms/1000).toFixed(1)} 秒`,
             detail:{operation:rel,transport:stats.transport,model:stats.model||undefined,tps:avgTps,rounds:stats.rounds.length,modelMs:sum(stats.rounds),toolCalls:stats.tools.length,toolMs:sum(stats.tools),cacheHits:hits,

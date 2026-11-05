@@ -81,9 +81,11 @@
     // 速度汇总：平均 = 总输出 token ÷ 总生成时间（与 Dragon Platform 一致）
     function speedSummary(rounds=[]){
         const list=(rounds||[]).filter(round=>round&&Number(round.tps)>0);if(!list.length)return null;
+        const bases=new Set(list.map(round=>round.rateBasis??(round.estimated?'estimated':'legacy')));
+        if(bases.size>1)return null;
         const speeds=list.map(round=>Number(round.tps)),out=list.reduce((sum,round)=>sum+(Number(round.outputTokens)||0),0),gen=list.reduce((sum,round)=>sum+(Number(round.generationMs)||0),0);
-        const round1=value=>Math.round(value*10)/10;
-        return {rounds:rounds.length,minTps:round1(Math.min(...speeds)),avgTps:round1(gen>0?out/(gen/1000):speeds.reduce((a,b)=>a+b,0)/speeds.length),maxTps:round1(Math.max(...speeds)),inputTokens:rounds.reduce((sum,round)=>sum+(Number(round.inputTokens)||0),0),outputTokens:out,totalMs:rounds.reduce((sum,round)=>sum+(Number(round.ms)||0),0),estimated:list.some(round=>round.estimated)};
+        const round2=value=>Math.round(value*100)/100;
+        return {rounds:list.length,minTps:round2(Math.min(...speeds)),avgTps:round2(gen>0?out/(gen/1000):speeds.reduce((a,b)=>a+b,0)/speeds.length),maxTps:round2(Math.max(...speeds)),inputTokens:list.every(round=>round.inputTokens!=null)?list.reduce((sum,round)=>sum+Number(round.inputTokens),0):null,outputTokens:out,totalMs:list.reduce((sum,round)=>sum+(Number(round.ms)||0),0),estimated:list.some(round=>round.estimated),rateBasis:[...bases][0]};
     }
     // 导出开头的统计表：每条带速度的 AI 回复一行（问题、轮次、token、最低/平均/最高 tok/s、耗时），附每一轮明细
     function modelStats(chat=[]){
@@ -91,14 +93,14 @@
         for(const item of chat||[]){
             if(item?.role==='user'){question=String(item.text||'').slice(0,200);continue;}
             const summary=speedSummary(item?.rounds);
-            if(summary)rows.push({question,...summary,calls:item.rounds.map(round=>({index:round.index,at:round.at,model:round.model,inputTokens:round.inputTokens,outputTokens:round.outputTokens,estimated:Boolean(round.estimated),ttftMs:round.ttftMs,ms:round.ms,tps:round.tps}))});
+            if(item?.rounds?.length)rows.push({question,...summary,calls:item.rounds.map(round=>({index:round.index,at:round.at,model:round.model,inputTokens:round.inputTokens,outputTokens:round.outputTokens,answerTokens:round.answerTokens,thinkingTokens:round.thinkingTokens,requestId:round.requestId,rateBasis:round.rateBasis,estimated:Boolean(round.estimated),ttftMs:round.ttftMs,ms:round.ms,generationMs:round.generationMs,tps:round.tps}))});
         }
-        return rows.length?{replies:rows,total:speedSummary(rows.flatMap(row=>row.calls.map(call=>({...call,generationMs:call.tps>0?call.outputTokens/call.tps*1000:0}))))}:null;
+        return rows.length?{replies:rows,total:speedSummary(rows.flatMap(row=>row.calls))}:null;
     }
     function exportLog(cellId,context={}){
         if(!enabled)return;
         const {chat,...rest}=context,stats=modelStats(chat);
-        const content={format:'aiops-report-diagnostics',version:2,environment:environment(),activeStage:active.get(cellId)?.stage||null,exportedAt:new Date().toISOString(),cellId,...(stats?{modelStats:stats}:{}),context:safe({page:window.location?.pathname||'',...rest}),retention:{perCell:LIMIT,pageOnly:true},entries:safe(traces.get(cellId)||[])};
+        const content={format:'aiops-report-diagnostics',version:2,environment:environment(),activeStage:active.get(cellId)?.stage||null,exportedAt:new Date().toISOString(),cellId,...(stats?{modelStats:safe(stats)}:{}),context:safe({page:window.location?.pathname||'',...rest}),retention:{perCell:LIMIT,pageOnly:true},entries:safe(traces.get(cellId)||[])};
         const blob=new Blob([JSON.stringify(content,null,2)],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');
         link.href=url;link.download='aiops-report-'+String(cellId).replace(/[^a-z0-9_-]/gi,'_')+'-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
         return content;

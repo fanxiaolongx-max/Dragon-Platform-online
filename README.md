@@ -19,11 +19,17 @@
 [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.29%2B-2c5bb4.svg)](https://www.uvicorn.org/)
 [![Platform](https://img.shields.io/badge/Hosted%20On-Dragon%20Platform-7c3aed.svg)](https://github.com/fanxiaolongx-max/Dragon-Platform.git)
 
-**AiOps-Report** 是运营数字人写报告服务（版本 `1.8.8`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
+**AiOps-Report** 是运营数字人写报告服务（版本 `1.8.10`），专为质量运营与服务合控场景设计。服务串联了指标目录、多源业务数据直查、要素分析与月度/专项报告自动化生成。
 
 本仓库是作为 [Dragon Platform](https://github.com/fanxiaolongx-max/Dragon-Platform.git) 托管 Python 应用的**独立开发与协同仓库**，既支持独立作为 FastAPI 微服务本地运行，也可无缝部署到 Dragon Platform 中台，由平台自动代理并提供在线 IDE、版本回退与双轨数据库挂载。
 
 ---
+
+## 1.8.9 更新说明
+
+「开发者 → 工具 → 交互日志」搜索 `MODEL-INVOKE`，查看每次请求的思考设置、是否检测到思考、实报输入 / 正文 / 思考 / 生成合计 token、耗时和速度。点「导出 JSON」会重新读取当前筛选范围并下载一份文件，内含应用服务端和前端交互记录；无需另行导出原始控制台。按同一请求编号可关联月报中的调试记录。
+
+端到端速度以完整模型请求耗时为分母（含等待和传输）。模型未提供阶段耗时或 token 分类时显示「未上报」；不会用字数猜测模型 API 的实报用量。ADC 现有按字数估算继续标记为估算。此版本不新增表；思考原文、请求头和原始上游响应不写入模型性能日志。
 
 ## 1.8.6 更新说明
 

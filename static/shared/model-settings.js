@@ -49,7 +49,11 @@ async function perform(kind){
  controller=new AbortController();actions(true);status(kind==='test'?t('正在调用模型测试…','Testing model…'):t('正在保存…','Saving…'));
  try{
   if(kind==='test'){
-   const reply=await window.AiOpsModels.request('/test',body,controller.signal);status(t('测试成功','Test succeeded')+' · '+reply.protocol+' · '+reply.ms+' ms\n'+reply.text);
+   const reply=await window.AiOpsModels.request('/test',body,controller.signal),p=reply.performance;
+   const n=value=>value??t('未上报','unreported');
+   const metrics=p?'\n'+t('正文 / 思考 / 合计 token：','Answer / thinking / generated tokens: ')+[p.answerTokens,p.thinkingTokens,p.generatedTokens].map(n).join(' / ')
+    +'\n'+t('端到端速度（正文 / 合计）：','End-to-end rate (answer / generated): ')+[p.answerEndToEndTps,p.generatedEndToEndTps].map(n).join(' / ')+' tok/s':'';
+   status(t('测试成功','Test succeeded')+' · '+reply.protocol+' · '+reply.ms+' ms'+metrics+'\n'+reply.text);
   }else if(kind==='delete'){
    await window.AiOpsModels.request('/profiles/'+current.id,null,controller.signal,'DELETE');edit(null);await load();status(t('已删除','Deleted'));
   }else{

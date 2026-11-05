@@ -2,9 +2,18 @@
 (function(){
 'use strict';
 let sink=null;
+const numericUsage=new Set(['inputTokens','outputTokens','answerTokens','thinkingTokens','generatedTokens','requestedMaxOutputTokens','max_tokens','max_completion_tokens','max_output_tokens','promptTokenCount','candidatesTokenCount','thoughtsTokenCount','totalTokenCount','cachedContentTokenCount','toolUsePromptTokenCount','prompt_tokens','completion_tokens','input_tokens','output_tokens','total_tokens','text_tokens','reasoning_tokens','budget_tokens']);
+function safeField(key,value){
+  if(numericUsage.has(key)&&(value===null||Number.isSafeInteger(value)&&value>=0))return value;
+  if(key==='tokenSource'&&['provider','unavailable'].includes(value))return value;
+  if(['output_tokens_details','completion_tokens_details'].includes(key)&&value&&typeof value==='object'&&!Array.isArray(value)){
+    return Object.fromEntries(Object.entries(value).filter(([k,v])=>['text_tokens','reasoning_tokens'].includes(k)&&Number.isSafeInteger(v)&&v>=0));
+  }
+  return /(?:password|passwd|secret|token|cookie|authorization|api[_-]?key|private[_-]?key|signature)/i.test(key)?'[REDACTED]':safe(value);
+}
 function safe(value){
   if(Array.isArray(value))return value.map(safe);
-  if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,/(?:password|passwd|secret|token|cookie|authorization|api[_-]?key|private[_-]?key|signature)/i.test(key)?'[REDACTED]':safe(item)]));
+  if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,safeField(key,item)]));
   if(typeof value!=='string')return value;
   if(/^\s*[\[{]/.test(value)){try{return JSON.stringify(safe(JSON.parse(value)),null,2);}catch(_){}}
   return value.replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/gi,'[REDACTED]')

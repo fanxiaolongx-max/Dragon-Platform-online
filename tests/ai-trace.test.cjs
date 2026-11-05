@@ -11,6 +11,9 @@ test('diagnostic observers remain bound to their owner, with credentials removed
  const release=D.use(event=>one.push(D.safe(event))),first=D.capture();first('request',{request:{body:{password:'secret-a',sql:"SELECT 'safe'",message:'Cookie: session=hidden\napi_key="secret-b"'},url:'/apps/aiops-report/~host-credential/index.html'}});release();
  const release2=D.use(event=>two.push(D.safe(event)));first('stream_done',{late:true});D.capture()('new_chat');release2();
  assert.equal(one.length,2);assert.equal(two.length,1);assert.doesNotMatch(JSON.stringify(one),/secret-a|secret-b|host-credential|session=hidden/);assert.match(JSON.stringify(one),/SELECT/);
+ const usage=D.safe({thinkingTokens:0,generatedTokens:310,answerTokens:'fixture-secret',accessToken:'private',tokenSource:'provider'});
+ assert.equal(usage.thinkingTokens,0);assert.equal(usage.generatedTokens,310);assert.equal(usage.tokenSource,'provider');
+ assert.equal(usage.answerTokens,'[REDACTED]');assert.equal(usage.accessToken,'[REDACTED]');
 });
 test('browser AI dispatcher records full tool/HTTP replies, failed business codes, resolved month SQL, and empty results',async()=>{
  const c=runtime(),events=[],sent=[];let ask=0;
