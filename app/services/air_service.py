@@ -18,6 +18,7 @@ import time
 import uuid
 from typing import Any
 
+from app.core import identity
 from app.core.exceptions import BusinessError, QueryValidationError
 from app.db import detect_sql_dialect, execute_app_schema, query_app_schema, query_business
 from app.services.agent_service import check_read_sql
@@ -91,10 +92,53 @@ async def _all_rows(sql: str) -> list[dict]:
         offset += DATA_LIMIT
 
 
+# --------------------------------------------------------------------
+# 归属与可见范围：月报骨架里的 owner = {"user", "team", "official"}；没有 owner 的旧月报算官方月报。
+# 官方月报所有人可见、只有官方身份能改；团队月报只有本团队和官方身份可见、可改。
+# --------------------------------------------------------------------
+
+def _owner(content: dict) -> dict:
+    owner = content.get("owner") if isinstance(content.get("owner"), dict) else None
+    if not owner or owner.get("official") or not owner.get("team"):
+        return {"official": True, "team": "", "user": str((owner or {}).get("user") or "")}
+    return {"official": False, "team": str(owner["team"]), "user": str(owner.get("user") or "")}
+
+
+def _scope(content: dict) -> str:
+    owner = _owner(content)
+    return "official" if owner["official"] else "team:" + owner["team"]
+
+
+def _my_scope() -> str:
+    viewer = identity.current()
+    return "official" if not viewer or viewer.official else "team:" + viewer.team
+
+
+def _visible(content: dict) -> bool:
+    return not identity.is_member() or _scope(content) in ("official", _my_scope())
+
+
+def _editable(content: dict) -> bool:
+    return not identity.is_member() or _scope(content) == _my_scope()
+
+
+def _owner_view(content: dict) -> dict:
+    """给页面的归属信息：official 用来在名称旁显示超管标志，editable=False 时页面只读（可另存为自己的副本）。"""
+    owner = _owner(content)
+    return {"official": owner["official"], "team": owner["team"], "user": owner["user"],
+            "mine": _scope(content) == _my_scope(), "editable": _editable(content)}
+
+
+def _assert_editable(content: dict) -> None:
+    if not _editable(content):
+        raise BusinessError(403, "这是超级管理员的月报，只能查看；需要修改请用「另存为」生成自己的月报")
+
+
 async def _report_row(report_id: int) -> dict:
     rows = await query_app_schema(
         f"SELECT * FROM t_report_template WHERE id = {report_id} AND description LIKE '{KIND}:%' LIMIT 1", limit=1)
-    if not rows:
+    # 看不到的月报与不存在的月报同样处理，不暴露它是否存在
+    if not rows or not _visible(_loads(rows[0].get("content"), {})):
         raise QueryValidationError(f"AI 月报 {report_id} 不存在")
     return rows[0]
 
@@ -105,12 +149,15 @@ async def list_documents() -> list[dict]:
     result, groups = [], {}
     for row in rows:
         content = _loads(row.get("content"), {})
+        if not _visible(content):
+            continue
         month = content.get("reportMonth", "")
         kind = content.get("reportKind", "legacy")
         entry = {"id": str(row["id"]), "name": row.get("name") or "AI 月报", "reportMonth": month,
-                 "updatedAt": str(row.get("updated_at") or ""), "reportKind": kind, "isDefault": False}
+                 "updatedAt": str(row.get("updated_at") or ""), "reportKind": kind, "isDefault": False, "owner": _owner_view(content)}
         result.append(entry)
-        key = month if _MONTH.fullmatch(str(month)) else "invalid:" + entry["id"]
+        # 官方月报和每个团队各自有自己的「当月默认月报」
+        key = _scope(content) + "|" + (month if _MONTH.fullmatch(str(month)) else "invalid:" + entry["id"])
         groups.setdefault(key, []).append(entry)
     for group in groups.values():
         eligible = [entry for entry in group if entry["reportKind"] not in ("copy", "history")]
@@ -119,7 +166,8 @@ async def list_documents() -> list[dict]:
             entry["isDefault"] = entry is primary
             entry["reportKind"] = "copy" if entry["reportKind"] == "copy" else "primary" if entry is primary else "history"
     # Default entries come first; historical duplicates remain accessible without deleting user content.
-    return sorted(result, key=lambda entry: not entry["isDefault"])
+    # 同一个月既有官方月报又有自己的月报时，自己的排在前面（页面按月份打开第一份默认月报）
+    return sorted(result, key=lambda entry: (not entry["isDefault"], not entry["owner"]["mine"]))
 
 
 async def read_document(report_id: Any) -> dict:
@@ -166,7 +214,7 @@ async def read_document(report_id: Any) -> dict:
         style = {**style, "prompt": str(_loads(style_row.get("config_text"), {}).get("prompt") or style.get("prompt") or "")}
     return {"version": 1, "id": str(report_id), "name": row.get("name") or "AI 月报", "reportKind": kind, "reportMonth": content.get("reportMonth", ""),
             "template": content.get("template") or {}, "style": style, "chapters": chapters,
-            "updatedAt": str(row.get("updated_at") or "")}
+            "updatedAt": str(row.get("updated_at") or ""), "owner": _owner_view(content)}
 
 
 # --------------------------------------------------------------------
@@ -258,6 +306,12 @@ async def _save_document(doc: dict) -> dict:
         stored_row = rows[0] if rows else None
     if stored_row:
         previous = _loads(stored_row.get("content"), {})
+        if not _visible(previous):
+            raise QueryValidationError("月报已不存在，请重新打开或另存为新月报")
+        _assert_editable(previous)
+        # 归属以库里的为准，页面提交的不算
+        if isinstance(previous.get("owner"), dict):
+            content["owner"] = previous["owner"]
         if previous.get("reportMonth") != content["reportMonth"]:
             raise QueryValidationError("切换月份请打开或新建该月份月报，不能覆盖原月份记录")
         kind = previous.get("reportKind")
@@ -266,8 +320,12 @@ async def _save_document(doc: dict) -> dict:
             kind = entry.get("reportKind", "history")
         content["reportKind"] = kind
     else:
+        viewer = identity.current()
+        if viewer:
+            content["owner"] = {"user": viewer.user, "team": "" if viewer.official else viewer.team, "official": viewer.official}
         if not explicit_copy:
-            primary = next((entry for entry in await list_documents() if entry["reportMonth"] == content["reportMonth"] and entry["isDefault"]), None)
+            primary = next((entry for entry in await list_documents()
+                            if entry["reportMonth"] == content["reportMonth"] and entry["isDefault"] and entry["owner"]["mine"]), None)
             if primary:
                 raise BusinessError(409, "该月份已有月报，请打开已有月报；如需第二份，请使用另存为", {"reportId": primary["id"]})
         content["reportKind"] = "copy" if explicit_copy else "primary"
@@ -331,7 +389,7 @@ async def _save_document(doc: dict) -> dict:
 
 async def delete_document(report_id: Any) -> dict:
     report_id = _report_id(report_id)
-    await _report_row(report_id)
+    _assert_editable(_loads((await _report_row(report_id)).get("content"), {}))
     await execute_app_schema(f"DELETE FROM t_report_config WHERE report_id = {report_id}")
     await execute_app_schema(f"DELETE FROM t_report_block WHERE report_id = {report_id}")
     await execute_app_schema(f"DELETE FROM t_report_template WHERE id = {report_id}")
@@ -464,6 +522,8 @@ async def run_data(month: str, recipe: dict) -> dict:
         try:
             sql = check_read_sql(resolve_sql(source.get("sql"), month, offset))
             db = "app" if source.get("source") == "app" else "netcare"
+            if db == "app":
+                identity.deny_member("直接查询应用库")  # 应用库里有其它团队的月报
             rows = await (query_app_schema if db == "app" else query_business)(sql, limit=DATA_LIMIT)
             headers = list(rows[0].keys()) if rows else []
             result[sid] = {"month": month_values(month, offset)["month"], "source": db, "label": label, "sql": sql,

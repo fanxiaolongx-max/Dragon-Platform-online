@@ -13,6 +13,7 @@ from fastapi import APIRouter, Query
 
 from app.config import settings
 from app.core.response import success, error
+from app.core import identity
 from app.db import query_business, query_app_schema
 from app.services import ops_service
 
@@ -363,6 +364,8 @@ async def _table_meta(base: str, is_app: bool = False) -> dict | None:
 
     业务库表 → netcare schema（只读业务库）；应用表（月报存储）→ 应用 UUID schema（SQLite 应用库）。
     """
+    if is_app:
+        identity.deny_member("查看应用库的表")
     schema = settings.APP_SCHEMA if is_app else "netcare"
     query = query_app_schema if is_app else query_business
     q = base.replace("'", "''")
@@ -447,6 +450,8 @@ async def inspect_table(
         result["elements"] = []
 
     # 元数据 + 样例（应用表查应用 UUID schema，其余查业务库 netcare）
+    if result["is_app"]:
+        identity.deny_member("查看应用库的表")
     query = query_app_schema if result["is_app"] else query_business
     meta = await _table_meta(base, result["is_app"])
     result["meta"] = meta

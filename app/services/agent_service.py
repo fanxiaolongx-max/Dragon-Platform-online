@@ -24,6 +24,7 @@ from typing import Any
 from app.config import settings
 from app.core.exceptions import BusinessError, QueryValidationError
 from app.core.logger import logger
+from app.core import identity
 from app.db import execute_app_schema, query_app_schema, query_business
 from app.services.data_service import DataService
 from app.utils.sql_helper import format_sql_value
@@ -432,6 +433,7 @@ async def _query(args: dict) -> dict:
     sql = check_read_sql(args.get("sql"))
     limit = max(1, min(MAX_ROWS, int(args.get("limit") or 100)))
     if source == "app":
+        identity.deny_member("直接查询应用库")  # 应用库里有其它团队的月报
         rows = await query_app_schema(sql, limit=limit)
     elif source == "netcare":
         rows = await query_business(sql, limit=limit)
@@ -578,6 +580,7 @@ async def _plan_write(tool: str, args: dict) -> dict:
     """校验写操作并生成预览（不执行）。返回 normalized args + preview。"""
     if tool in ("cell_upsert", "cell_delete"):
         return await _plan_report(tool, args)
+    identity.deny_member("直接修改应用库")  # 月报格子的增删改走上面的 cell_* 工具，按归属校验
     if tool == "execute_sql":
         if not raw_write_enabled():
             raise _fail("原始写 SQL 未开启（需要管理员设置 AGENT_ALLOW_RAW_WRITE=true）")

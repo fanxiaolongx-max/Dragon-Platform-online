@@ -86,8 +86,13 @@
     function toolbar(){
         $('#airStop').hidden=!state.busy.size&&!busyFields.size;
         $('#airMonth').value=state.doc.reportMonth;
-        $('#airReportName').textContent=state.doc.name+(state.doc.reportKind==='copy'?t(' · 副本',' · Copy'):state.doc.reportKind==='history'?t(' · 历史记录',' · History'):'');
-        const reportEntry=item=>`<button type="button" data-open="${esc(item.id)}" aria-current="${item.id===state.doc.id}"><span>${esc(item.name)}${item.reportKind==='copy'?` · ${t('副本','Copy')}`:item.reportKind==='history'?` · ${t('历史记录','History')}`:''}</span><small>${esc(item.reportMonth)}</small></button>`;
+        // 归属标志：👑 超级管理员的月报（所有人可见，只有超管能改）；👤 团队自己的月报（只有本团队和超管可见）
+        const ownerOf=item=>item?.owner||state.reports.find(entry=>entry.id===item?.id)?.owner||null;
+        const ownerMark=(item,html=true)=>{const owner=ownerOf(item);if(!owner)return '';return owner.official?'👑 ':'👤 '+(owner.mine?'':(html?esc(owner.team):owner.team)+' · ');};
+        const ownerTip=item=>{const owner=ownerOf(item);if(!owner)return '';return owner.official?t('超级管理员的月报：所有人可见','Super admin report: visible to everyone')+(owner.editable?'':t('，只读，可另存为自己的月报','; read-only, save a copy to edit')):owner.mine?t('我的团队的月报：其他团队看不到','My team\'s report: hidden from other teams'):t('团队月报：','Team report: ')+owner.team;};
+        $('#airReportName').title=ownerTip(state.doc);
+        $('#airReportName').textContent=ownerMark(state.doc,false)+state.doc.name+(ownerOf(state.doc)&&!ownerOf(state.doc).editable?t(' · 只读',' · Read-only'):'')+(state.doc.reportKind==='copy'?t(' · 副本',' · Copy'):state.doc.reportKind==='history'?t(' · 历史记录',' · History'):'');
+        const reportEntry=item=>`<button type="button" data-open="${esc(item.id)}" aria-current="${item.id===state.doc.id}" title="${esc(ownerTip(item))}"><span>${ownerMark(item)}${esc(item.name)}${item.reportKind==='copy'?` · ${t('副本','Copy')}`:item.reportKind==='history'?` · ${t('历史记录','History')}`:''}</span><small>${esc(item.reportMonth)}</small></button>`;
         const history=state.reports.filter(item=>item.reportKind==='history');
         $('#airReportList').innerHTML=state.reports.filter(item=>item.reportKind!=='history').map(reportEntry).join('')+(history.length?`<details><summary>${t('同月历史记录','Earlier records')}（${history.length}）</summary>${history.map(reportEntry).join('')}</details>`:'')||`<p>${t('还没有保存的月报','No saved reports yet')}</p>`;
         const stale=staleCells().length,narratives=$('#airNarratives');

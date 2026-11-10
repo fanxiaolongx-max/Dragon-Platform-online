@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 
 from app.config import adapt_settings_from_headers, settings
 from app.core.logger import logger
+from app.core import identity
 from app.core.exceptions import register_exception_handlers
 from app.routers import health, report, data_element, data_source, data_query, table_map, agent, air, environment, diagnostics, ops
 from app.routers import ai_models
@@ -69,6 +70,22 @@ def create_app() -> FastAPI:
         if request.method == "GET" and (path.endswith(("/", ".html", ".js", ".css")) or path in ("/dev", "/api-test")):
             response.headers.setdefault("Cache-Control", "no-cache")
         return response
+
+    # 团队隔离：校验平台转发的用户身份（最后注册，最先执行）；团队成员不可用的接口在这里统一拒绝
+    @app.middleware("http")
+    async def platform_identity(request, call_next):
+        from fastapi.responses import JSONResponse
+        try:
+            viewer = identity.from_headers(request.headers)
+        except identity.IdentityError as error:
+            return JSONResponse({"code": 403, "message": str(error), "data": None}, status_code=403)
+        token = identity.set_current(viewer)
+        try:
+            if identity.is_member() and identity.member_blocked(request.method, request.url.path):
+                return JSONResponse({"code": 403, "message": "该功能仅超级管理员可用", "data": None}, status_code=403)
+            return await call_next(request)
+        finally:
+            identity.reset(token)
 
     # 注册路由（全部挂到根级 /api）
     app.include_router(ai_models.router, prefix="/api")

@@ -15,7 +15,7 @@ const apiBase=()=>{ const p=location.pathname; return p.slice(0,p.lastIndexOf('/
 const fail=(status,message)=>Object.assign(new Error(message),{status});
 const clean=value=>window.AiOpsDiagnostics.safe(value);
 let requestSequence=0;
-async function http(method,path,body,signal,observe){
+async function http(method,path,body,signal,observe,retry=1){
     signal?.throwIfAborted();
     const id='http_'+(++requestSequence),started=Date.now(),request={method,path,body:body??null};
     observe?.({kind:'http',id,stage:'http_start',status:'running',request});
@@ -28,8 +28,13 @@ async function http(method,path,body,signal,observe){
         observe?.({kind:'http',id,stage:'http_done',status:'success',request,response:json,httpStatus:response.status,requestId:response.headers.get('x-request-id')||'',ms:Date.now()-started});
         return json.data;
     }catch(error){
-        observe?.({kind:'http',id,stage:'http_done',status:error.name==='AbortError'?'cancelled':'error',request,response:json??raw??null,httpStatus:response?.status??null,businessCode:json?.code??null,requestId:response?.headers.get('x-request-id')||'',error:error.message,ms:Date.now()-started});
         if(error.name==='AbortError')throw error;
+        // 未收到 HTTP 响应（如长连接静默断开、代理瞬时重置）：自动重试一次
+        if(!response&&retry>0){
+            await new Promise(r=>setTimeout(r,500));
+            return http(method,path,body,signal,observe,retry-1);
+        }
+        observe?.({kind:'http',id,stage:'http_done',status:'error',request,response:json??raw??null,httpStatus:response?.status??null,businessCode:json?.code??null,requestId:response?.headers.get('x-request-id')||'',error:error.message,ms:Date.now()-started});
         if(!response)throw fail(0,'应用接口连接中断：'+method+' '+path+'。未收到 HTTP 响应，请检查服务、代理连接或重新打开应用。');
         throw error;
     }
