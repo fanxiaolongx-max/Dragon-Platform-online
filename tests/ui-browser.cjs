@@ -85,7 +85,7 @@ const server = http.createServer((req, res) => {
     });return;
   }
   if (url === '/api/air/documents' && failList) {
-    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({code:500,message:'fixture list failed'}));return;
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({code:500,message:typeof failList==='string'?failList:'fixture list failed'}));return;
   }
   if (url.startsWith('/api/')) {
     res.setHeader('Content-Type', 'application/json');
@@ -668,6 +668,18 @@ async function assistantFeedback(page){
   await concurrencyFlow(page,origin);
   await realAdcFlow(page,origin);
   await opsFlow(page,origin);
+  monthMode = false;
+  failList = 'SQL 执行失败：no such table: t_report_template';
+  try {
+    await page.goto(origin + '/');
+    const err = page.locator('#airReport .air-error');
+    await err.waitFor();
+    const msg = await err.innerText();
+    assert(!msg.includes('reportMonth'), `Boot error should not crash on null.reportMonth: ${msg}`);
+    assert(msg.includes('初始化应用表'), `Boot error should explain missing tables: ${msg}`);
+  } finally {
+    failList = false;
+  }
   assert.deepEqual(errors, []);
   console.log('PASS: restored geometry, four-edge dragging, both resize handles, dark buttons, iframe zoom, viewport resizing, visual viewport zoom, modal state/focus, root and prefixed API paths, sandboxed embedding.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => { await browser?.close(); server.close(); });

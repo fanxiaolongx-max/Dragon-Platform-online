@@ -110,10 +110,15 @@ async def _delayed_flush() -> None:
     await flush()
 
 
+def _is_missing_table_error(exc: Exception) -> bool:
+    return bool(re.search(r"no such table|doesn't exist|does not exist", str(exc), re.I))
+
+
 async def flush() -> None:
     """把缓冲的日志和表失败标记写进应用库；失败只记服务端日志，不影响业务请求。"""
     global _buffer, _health_dirty, _last_prune
     token = _suppress.set(True)
+    missing_table = False
     try:
         entries, _buffer = _buffer, []
         now = _now()
@@ -124,6 +129,10 @@ async def flush() -> None:
                 await db.execute_app_schema(
                     f"INSERT INTO t_report_config (report_id, block_id, section, config_text, created_at, updated_at) VALUES {values}")
             except Exception as exc:
+                if _is_missing_table_error(exc):
+                    missing_table = True
+                    logger.warning(f"交互日志写入跳过（应用表尚未初始化，丢弃 {len(entries) - start} 条）：{exc}")
+                    break
                 # 整批失败时逐条重写，一条写不进去（超长、特殊字符）不连累同批的其它日志
                 logger.warning(f"交互日志批量写入失败，改为逐条写入（{len(chunk)} 条）：{exc}")
                 for e in chunk:
@@ -133,14 +142,16 @@ async def flush() -> None:
                             f"VALUES ({REPORT_ID}, NULL, '{LOG_SECTION}', {lit(_dumps(e))}, {lit(e['at'])}, {lit(now)})")
                     except Exception as one:
                         logger.warning(f"交互日志写入失败（丢弃 1 条：{e.get('title', '')[:60]}）：{one}")
-        if _health_dirty:
+        if _health_dirty and not missing_table:
             try:
                 await _ensure_health()
                 await _save_row(HEALTH_SECTION, _health)
                 _health_dirty = False
             except Exception as exc:
+                if _is_missing_table_error(exc):
+                    missing_table = True
                 logger.warning(f"表失败标记写入失败：{exc}")
-        if time.time() - _last_prune > 3600:
+        if not missing_table and time.time() - _last_prune > 3600:
             _last_prune = time.time()
             cutoff = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - RETAIN_DAYS * 86400))
             try:

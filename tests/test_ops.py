@@ -214,3 +214,22 @@ class OpsTests(unittest.IsolatedAsyncioTestCase):
         stored = self.stored('ops_log')
         self.assertEqual([e['kind'] for e in stored], ['model', 'ai'])
         self.assertNotEqual(stored[0]['at'][:4], '2020', 'implausible browser times fall back to the server time')
+
+    async def test_missing_table_skips_per_row_retry(self):
+        ops_service.record_client([
+            {'kind': 'ui', 'title': 'A'},
+            {'kind': 'ui', 'title': 'B'},
+            {'kind': 'ui', 'title': 'C'}], 'air')
+        calls = []
+        original = db.execute_app_schema
+
+        async def fail_missing(sql):
+            calls.append(sql)
+            raise db.DatabaseError('SQL 执行失败：no such table: t_report_config')
+
+        ops_service.db.execute_app_schema = fail_missing
+        try:
+            await ops_service.flush()
+        finally:
+            ops_service.db.execute_app_schema = original
+        self.assertEqual(len(calls), 1, 'missing table should stop retrying per row or pruning')

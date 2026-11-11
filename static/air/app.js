@@ -3,7 +3,7 @@
     'use strict';
     const M=AiReportModel,esc=AiReportView.esc;
     const $=selector=>document.querySelector(selector);
-    const state={doc:null,saved:'',lang:/^en/i.test(window.ToolsI18n?.getLanguage?.()||'')?'en':'zh',preview:false,selected:null,busy:new Map(),undo:[],reports:[],drafts:new Map(),saving:false,saveKey:M.uid('save')};
+    const state={doc:null,saved:'',lang:/^en/i.test(window.ToolsI18n?.getLanguage?.()||'')?'en':'zh',preview:false,selected:null,busy:new Map(),undo:[],reports:[],listError:'',drafts:new Map(),saving:false,saveKey:M.uid('save')};
     const t=(zh,en)=>state.lang==='en'?en:zh;
     // An opened but unused chapter style chat is not an unsaved change.
     const snapshotOf=doc=>JSON.stringify(doc,(key,value)=>(key==='style'||M.FIELD_KEY.test(key)||M.IMAGE_KEY.test(key))&&value&&typeof value==='object'&&'chat' in value&&!value.prompt&&!value.chat?.length&&!value.theme?undefined:value);
@@ -85,21 +85,29 @@
     }
     function toolbar(){
         $('#airStop').hidden=!state.busy.size&&!busyFields.size;
-        $('#airMonth').value=state.doc.reportMonth;
         // 归属标志：👑 超级管理员的月报（所有人可见，只有超管能改）；👤 团队自己的月报（只有本团队和超管可见）
         const ownerOf=item=>item?.owner||state.reports.find(entry=>entry.id===item?.id)?.owner||null;
         const ownerMark=(item,html=true)=>{const owner=ownerOf(item);if(!owner)return '';return owner.official?'👑 ':'👤 '+(owner.mine?'':(html?esc(owner.team):owner.team)+' · ');};
         const ownerTip=item=>{const owner=ownerOf(item);if(!owner)return '';return owner.official?t('超级管理员的月报：所有人可见','Super admin report: visible to everyone')+(owner.editable?'':t('，只读，可另存为自己的月报','; read-only, save a copy to edit')):owner.mine?t('我的团队的月报：其他团队看不到','My team\'s report: hidden from other teams'):t('团队月报：','Team report: ')+owner.team;};
-        $('#airReportName').title=ownerTip(state.doc);
-        $('#airReportName').textContent=ownerMark(state.doc,false)+state.doc.name+(ownerOf(state.doc)&&!ownerOf(state.doc).editable?t(' · 只读',' · Read-only'):'')+(state.doc.reportKind==='copy'?t(' · 副本',' · Copy'):state.doc.reportKind==='history'?t(' · 历史记录',' · History'):'');
-        const reportEntry=item=>`<button type="button" data-open="${esc(item.id)}" aria-current="${item.id===state.doc.id}" title="${esc(ownerTip(item))}"><span>${ownerMark(item)}${esc(item.name)}${item.reportKind==='copy'?` · ${t('副本','Copy')}`:item.reportKind==='history'?` · ${t('历史记录','History')}`:''}</span><small>${esc(item.reportMonth)}</small></button>`;
+        const reportEntry=item=>`<button type="button" data-open="${esc(item.id)}" aria-current="${item.id===state.doc?.id}" title="${esc(ownerTip(item))}"><span>${ownerMark(item)}${esc(item.name)}${item.reportKind==='copy'?` · ${t('副本','Copy')}`:item.reportKind==='history'?` · ${t('历史记录','History')}`:''}</span><small>${esc(item.reportMonth)}</small></button>`;
         const history=state.reports.filter(item=>item.reportKind==='history');
         $('#airReportList').innerHTML=state.reports.filter(item=>item.reportKind!=='history').map(reportEntry).join('')+(history.length?`<details><summary>${t('同月历史记录','Earlier records')}（${history.length}）</summary>${history.map(reportEntry).join('')}</details>`:'')||`<p>${t('还没有保存的月报','No saved reports yet')}</p>`;
-        const stale=staleCells().length,narratives=$('#airNarratives');
-        narratives.hidden=!stale||state.preview;narratives.textContent=t(`更新总结（${stale}）`,`Update summaries (${stale})`);
         $('[data-air=preview]').textContent=state.preview?t('返回编辑','Edit'):t('预览','Preview');
         $('[data-air=language]').textContent=state.lang==='en'?'中文':'EN';
         const modelButton=document.querySelector('[data-ai-model-settings]');if(modelButton)modelButton.textContent=t('AI 模型','AI models');
+        if(!state.doc){
+            $('#airMonth').value='';
+            $('#airReportName').title='';
+            $('#airReportName').textContent=t('AI 月报','AI Report');
+            $('#airNarratives').hidden=true;
+            $('[data-air=save]').disabled=true;
+            return;
+        }
+        $('#airMonth').value=state.doc.reportMonth;
+        $('#airReportName').title=ownerTip(state.doc);
+        $('#airReportName').textContent=ownerMark(state.doc,false)+state.doc.name+(ownerOf(state.doc)&&!ownerOf(state.doc).editable?t(' · 只读',' · Read-only'):'')+(state.doc.reportKind==='copy'?t(' · 副本',' · Copy'):state.doc.reportKind==='history'?t(' · 历史记录',' · History'):'');
+        const stale=staleCells().length,narratives=$('#airNarratives');
+        narratives.hidden=!stale||state.preview;narratives.textContent=t(`更新总结（${stale}）`,`Update summaries (${stale})`);
         $('[data-air=save]').disabled=state.saving||!dirty();
         document.title=`${state.doc.name} - AI 月报`;
     }
@@ -1033,12 +1041,23 @@
     });
     reportRoot.addEventListener('dblclick',event=>{const handle=event.target.closest('[data-resize]');if(!handle)return;const cell=find(handle.dataset.resize)?.cell;if(cell){checkpoint();cell.height=0;cell.fit=false;render();}});
 
-    async function loadReports(){try{state.reports=await API.get('/api/ai-report/documents');return true;}catch(error){status(error.message);return false;}}
+    function formatLoadError(error){
+        const raw=error?.message||String(error||'');
+        if(/no such table|doesn't exist|表.*不存在/i.test(raw)){
+            return t(`应用数据库表尚未初始化（${raw}）。请点击右上角「应用运维」菜单中的「初始化应用表」完成部署后刷新页面。`,`App database tables are not initialized (${raw}). Open the top-right App Ops menu, run "Initialize app tables", then refresh.`);
+        }
+        return raw;
+    }
+    async function loadReports(){try{state.reports=await API.get('/api/ai-report/documents');state.listError='';return true;}catch(error){state.listError=error.message||String(error);status(state.listError);return false;}}
     async function confirmDiscard(){if(state.saving){status(t('正在保存，请稍候…','Saving, please wait…'));return false;}return !dirty()||AppDialog.confirm(t('当前月报有未保存的修改，确定放弃吗？','This report has unsaved changes. Discard them?'),{tone:'danger',confirmText:t('放弃修改','Discard')});}
     async function openReport(id){if(!await confirmDiscard())return;state.doc=M.normalize(await API.get('/api/ai-report/documents/'+encodeURIComponent(id)));state.saveKey='report-'+id;state.saved=snapshot();state.undo=[];state.selected=null;render();}
     async function newReport(month=previousMonth()){
         if(!await confirmDiscard()){toolbar();return;}
-        if(!await loadReports()){toolbar();return status(t('无法确认该月份是否已有月报，请稍后重试','Unable to check existing reports; please retry'));}
+        if(!await loadReports()){
+            toolbar();
+            if(!state.doc)throw new Error(state.listError||t('无法确认该月份是否已有月报，请稍后重试','Unable to check existing reports; please retry'));
+            return status(t('无法确认该月份是否已有月报，请稍后重试','Unable to check existing reports; please retry'));
+        }
         const existing=state.reports.find(item=>item.reportMonth===month&&item.reportKind!=='copy'&&item.reportKind!=='history'&&item.isDefault!==false);
         if(existing){
             state.doc=M.normalize(await API.get('/api/ai-report/documents/'+encodeURIComponent(existing.id)));state.saveKey='report-'+existing.id;state.saved=snapshot();state.undo=[];state.selected=null;render();
@@ -1065,21 +1084,24 @@
         finally{state.saving=false;toolbar();}
     }
     async function setMonth(month){
-        if(!M.validMonth(month)||month===state.doc.reportMonth)return;
+        if(!state.doc||!M.validMonth(month)||month===state.doc.reportMonth)return;
         try{await newReport(month);}catch(error){toolbar();status(error.message);}
     }
     async function renameOrCopy(copy){
+        if(!state.doc)return;
         if(state.saving)return status(t('正在保存，请稍候…','Saving, please wait…'));
         const name=await AppDialog.prompt(copy?t('另存为新的月报名称','Save as a new report named'):t('月报名称','Report name'),{defaultValue:state.doc.name});
         if(!name?.trim())return;checkpoint();state.doc.name=name.trim().slice(0,200);if(copy){state.doc.id='';state.doc.reportKind='copy';state.saveKey=M.uid('save');}render();if(copy)await save();
     }
     async function removeReport(){
+        if(!state.doc)return;
         if(state.saving)return status(t('正在保存，请稍候…','Saving, please wait…'));
         if(!state.doc.id||!await AppDialog.confirm(t(`删除月报“${state.doc.name}”？此操作不能撤销。`,`Delete report “${state.doc.name}”? This cannot be undone.`),{tone:'danger',confirmText:t('删除','Delete')}))return;
         await API.delete('/api/ai-report/documents/'+encodeURIComponent(state.doc.id));state.saved=snapshot();await loadReports();
         if(state.reports.length)await openReport(state.reports[0].id);else await newReport();
     }
     async function exportAs(kind){
+        if(!state.doc)return;
         const options={lang:state.lang,t};
         try{if(kind==='html')await AiReportExport.html(state.doc,options);else if(kind==='msg')await AiReportExport.msg(state.doc,options);else{state.preview=true;state.printing=true;render();AiReportExport.print();state.printing=false;render();}}
         catch(error){status(t('导出失败：','Export failed: ')+error.message);}
@@ -1103,7 +1125,7 @@
         for(const entry of settling.values())clearTimeout(entry.timer);settling.clear();
         clearTimeout(followTimer);
         // Detach the document from old async callbacks before allowing a new generation.
-        state.doc=M.normalize(JSON.parse(JSON.stringify(state.doc)));state.busy.clear();busyFields.clear();state.rings.clear();
+        if(state.doc)state.doc=M.normalize(JSON.parse(JSON.stringify(state.doc)));state.busy.clear();busyFields.clear();state.rings.clear();
         render();status(t('已停止生成，后续响应将被忽略','Generation stopped; late responses are ignored'));
     }
     $('#airStop').addEventListener('click',stopGeneration);
@@ -1148,7 +1170,7 @@
         const startup=window.ToolsPageStartup,step=(key,work)=>startup?startup.run(key,work):work();
         await step('list',loadReports).catch(()=>{});
         try{await step('report',()=>state.reports.length?openReport(state.reports[0].id):newReport());}
-        catch(error){reportRoot.innerHTML=`<p class="air-error">${esc(t('月报加载失败：','Could not load the report: ')+error.message)}</p>`;}
+        catch(error){reportRoot.innerHTML=`<p class="air-error">${esc(t('月报加载失败：','Could not load the report: ')+formatLoadError(error))}</p>`;}
         document.body.classList.remove('air-booting');
         await startup?.finish();
     })();
